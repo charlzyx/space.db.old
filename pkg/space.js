@@ -14,8 +14,9 @@ const SpaceProvider = (props) => {
     space: null,
     value: state,
     onChange: (s) => {
-      console.log('[Space final setter]', s);
-      setState(s);
+      console.debug('[Space next]\n', `${JSON.stringify(s, null, 2)}`);
+      // TODO: immer.js
+      setState(_.cloneDeep(s));
     },
   };
 
@@ -28,12 +29,19 @@ const SpaceProvider = (props) => {
 
 class Space extends Component {
   renderSpace = (ctx) => {
-    const { space, children } = this.props;
-    const { space: parentSpace } = ctx;
+    // TODO: init check and Map to reset
+    const { space, children, init } = this.props;
+    const { space: parentSpace, value, onChange } = ctx;
     const spc = parentSpace ? `${parentSpace}.${space}` : space;
+    const isEmpty = _.get(value, space) === undefined;
+    const next = { ...ctx, space: spc };
+    if (init && isEmpty) {
+      next.value = _.set(value, space, init);
+      onChange(value);
+    }
 
     return (
-      <SpaceCtx.Provider value={{ ...ctx, space: spc }}>
+      <SpaceCtx.Provider value={next}>
         {children}
       </SpaceCtx.Provider>
     );
@@ -53,6 +61,7 @@ class Ship extends Component {
     const {
       space, value, onChange,
     } = ctx;
+    // console.log('Ship value', value);
     const { children, field } = this.props;
     let change;
     if (field) {
@@ -65,6 +74,7 @@ class Ship extends Component {
       };
     } else {
       change = (next) => {
+        // TODO: root space
         const nextField = space.split('.').splice(-1)[0];
         const nextSpace = space.split('.').splice(-2, 1)[0];
         const nextValue = _.set(value, nextSpace, {

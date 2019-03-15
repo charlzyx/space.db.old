@@ -30,7 +30,7 @@ class App extends Component {
         <h1>
           9012 A Space Odyssey
         </h1>
-        <Space space="earth">
+        <Space space="earth" init={{ name: 1, age: 2, birth: 3 }}>
           <Ship field="name">
             <InputAdaptor>
               <input type="text" />
