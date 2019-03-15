@@ -2,6 +2,17 @@
 import React, { Component } from 'react';
 import { SpaceProvider, Space, Ship } from 'space';
 
+const List = ({ value: list, spaceLoading }) => {
+  console.log(list);
+  return (spaceLoading ? 'space loading...'
+    : (
+      <ul>
+        {list.map(li => <li key={li.key}>{li.w}</li>)}
+      </ul>
+    )
+  );
+};
+
 // Adaptor Element
 class InputAdaptor extends Component {
    onChange = (e) => {
@@ -22,6 +33,42 @@ class InputAdaptor extends Component {
    }
 }
 
+const http = query => new Promise((resolve) => {
+  console.log('http: query\n', `${JSON.stringify(query, null, 2)}`);
+  setTimeout(() => {
+    resolve({
+      list: [
+        { key: 'm', w: 'moon' },
+        { key: 'max', w: 'spacex' },
+        { key: 'cz', w: 'changezheng' },
+      ],
+      page: {},
+    });
+  }, 10000);
+});
+
+class EmitterAdaptor extends Component {
+   onEmit = (e) => {
+     const { value, onChange } = this.props;
+     e.preventDefault();
+     // http(value).then((resp) => {
+     //   onChange(resp.list);
+     // });
+     onChange(http(value));
+   };
+
+   render() {
+     const { children, spaceLoading } = this.props;
+     console.log(this.props);
+     const adaptorProps = {
+       ...children.props,
+       onClick: this.onEmit,
+     };
+
+     return spaceLoading ? 'space loading...' : React.cloneElement(children, adaptorProps);
+   }
+}
+
 
 class App extends Component {
   render() {
@@ -30,16 +77,37 @@ class App extends Component {
         <h1>
           9012 A Space Odyssey
         </h1>
-        <Space space="earth" init={{ name: 1, age: 2, birth: 3 }}>
-          <Ship field="name">
+        <Space
+          space="earth"
+          init={{
+            query: {
+              name: 1,
+              age: 2,
+            },
+            birth: '2001-01-01',
+            moons: {
+              list: [],
+              page: {},
+            },
+          }}
+        >
+          <Ship field="query.name">
+            <InputAdaptor>
+              <input type="query.text" />
+            </InputAdaptor>
+          </Ship>
+          <Ship field="query.age">
             <InputAdaptor>
               <input type="text" />
             </InputAdaptor>
           </Ship>
-          <Ship field="age">
-            <InputAdaptor>
-              <input type="text" />
-            </InputAdaptor>
+          <Ship field="query" asyncField="moons">
+            <EmitterAdaptor>
+              <input type="button" value="发射" />
+            </EmitterAdaptor>
+          </Ship>
+          <Ship field="moons.list">
+            <List />
           </Ship>
           <Space space="mars.age">
             <Ship>
