@@ -2,15 +2,18 @@
 import React, { Component } from 'react';
 import { SpaceProvider, Space, Ship } from 'space';
 
-const List = ({ value: list, spaceLoading }) => {
-  console.log(list);
-  return (spaceLoading ? 'space loading...'
-    : (
-      <ul>
-        {list.map(li => <li key={li.key}>{li.w}</li>)}
-      </ul>
-    )
-  );
+const List = ({ value: list, awaiting }) => {
+  console.log('awaiting', awaiting);
+  const [pending, error] = awaiting;
+  return pending
+    ? 'loadnig....'
+    : error
+      ? <pre>{JSON.stringify(error)}</pre>
+      : (
+        <ul>
+          {list.map(li => <li key={li.key}>{li.w}</li>)}
+        </ul>
+      );
 };
 
 // Adaptor Element
@@ -44,7 +47,7 @@ const http = query => new Promise((resolve) => {
       ],
       page: {},
     });
-  }, 10000);
+  }, 3000);
 });
 
 class EmitterAdaptor extends Component {
@@ -58,14 +61,13 @@ class EmitterAdaptor extends Component {
    };
 
    render() {
-     const { children, spaceLoading } = this.props;
-     console.log(this.props);
+     const { children } = this.props;
      const adaptorProps = {
        ...children.props,
        onClick: this.onEmit,
      };
 
-     return spaceLoading ? 'space loading...' : React.cloneElement(children, adaptorProps);
+     return React.cloneElement(children, adaptorProps);
    }
 }
 
@@ -101,7 +103,7 @@ class App extends Component {
               <input type="text" />
             </InputAdaptor>
           </Ship>
-          <Ship field="query" asyncField="moons">
+          <Ship field="query" await="moons">
             <EmitterAdaptor>
               <input type="button" value="发射" />
             </EmitterAdaptor>

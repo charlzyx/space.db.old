@@ -1,28 +1,42 @@
-/* eslint-disable react/prop-types */
+/* eslint-disable react/prop-types,no-param-reassign */
 /**
  * Space/DataBinding
  */
 import React, { createContext, Component, useState } from 'react';
 import _ from 'lodash';
+import produce from 'immer';
 
+// utils
 const isThenable = p => typeof p.then === 'function';
+
+/**
+ * TODO:
+ * - Path Resolver: ./../../ and / support
+ */
+const pathResolve = (space, field) => {
+  const shouldDot = !!space;
+  return shouldDot ? `${space || ''}.${field || ''}` : field || '';
+};
+
 
 // const withoutThenable = v => (isThenable(v) ? v : undefined);
 
 const SpaceCtx = createContext({});
 
 const SpaceProvider = (props) => {
-  const [state, setState] = useState({});
+  const [store, change] = useState({
+    // 异步表
+    __awaiting_map: {
+      // [path]: ['pending' | null, Error | null] | null
+    },
+  });
 
   const ctx = {
     space: null,
-    value: state,
-    onChange: (s) => {
-      // console.debug('[Space next]\n', `${JSON.stringify(s, null, 2)}`);
-      console.debug('[Space next]\n', s);
-      // TODO: immer.js
-      // setState(_.cloneDeepWith(s, withoutThenable));
-      setState(_.cloneDeep(s));
+    store,
+    change: (next) => {
+      console.debug('[Space next]\n', next);
+      change(next);
     },
   };
 
@@ -35,19 +49,25 @@ const SpaceProvider = (props) => {
 
 class Space extends Component {
   renderSpace = (ctx) => {
-    // TODO: init check and Map to reset
-    const { space, children, init } = this.props;
-    const { space: parentSpace, value, onChange } = ctx;
-    const spc = parentSpace ? `${parentSpace}.${space}` : space;
-    const isEmpty = _.get(value, space) === undefined;
-    const next = { ...ctx, space: spc };
-    if (init && isEmpty) {
-      next.value = _.set(value, space, init);
-      onChange(value);
+    // TODO: init check and Map Consider how to reset
+    const { space: nowSpace, children, init } = this.props;
+    const { space: parentSpace, store, change } = ctx;
+
+    const space = pathResolve(parentSpace, nowSpace);
+
+    const shouldInit = init && _.get(store, space) === undefined;
+
+    const nextCtx = { ...ctx, space };
+
+    if (shouldInit) {
+      nextCtx.store = produce(store, (draft) => {
+        _.set(draft, space, init);
+      });
+      change(nextCtx.store);
     }
 
     return (
-      <SpaceCtx.Provider value={next}>
+      <SpaceCtx.Provider value={nextCtx}>
         {children}
       </SpaceCtx.Provider>
     );
@@ -65,67 +85,66 @@ class Space extends Component {
 class Ship extends Component {
   renderShip = (ctx) => {
     const {
-      space, value, onChange,
+      space, store, change,
     } = ctx;
-    // console.log('Ship value', value);
-    const { children, field, asyncField } = this.props;
+
+    const { children, field, await: awaiting } = this.props;
     if (!children) {
-      console.warn('[space.Ship] must have an children');
+      console.warn('[space/Ship] should have an children');
       return null;
     }
-    // async
-    let change;
-    if (asyncField) { // async
-      change = (next) => {
+
+    let onChange;
+    const awaitingPath = pathResolve(space, typeof awaiting === 'string' ? awaiting : field);
+    const path = pathResolve(space, field);
+    // await: string | bool
+    if (awaiting) {
+      onChange = (next) => {
         if (isThenable(next)) {
-          const now = _.get(value, space)[asyncField];
-          if (asyncField === 'moons') {
-            now.__space_async__ = true;
-          }
-          const nextValue = _.set(value, `${space}.${asyncField}`, now);
-          onChange(nextValue);
+          // update await map
+          change(produce(store, (draft) => {
+            draft.__awaiting_map[awaitingPath] = ['pending'];
+          }));
+
+          // then
           next.then((awaitNext) => {
-            const awaitNextValue = _.set(value, `${space}.${asyncField}`, awaitNext);
-            onChange(awaitNextValue);
+            change(produce(store, (draft) => {
+              _.set(draft, awaitingPath, awaitNext);
+              draft.__awaiting_map[awaitingPath] = [];
+            }));
+          }).catch((e) => {
+            change(produce(store, (draft) => {
+              draft.__awaiting_map[awaitingPath] = [null, e];
+            }));
           });
-        } else {
-          const nextValue = _.set(value, `${space}.${asyncField}`, next);
-          onChange(nextValue);
+        } else { // sync
+          change(produce(store, (draft) => {
+            _.set(draft, awaitingPath, next);
+          }));
         }
       };
-    } else if (field) { // sync
-      change = (next) => {
-        const nextValue = _.set(value, `${space}.${field}`, next);
-        onChange(nextValue);
-      };
-    } else {
-      change = (next) => {
-        const spaces = space.split('.');
-        const nextField = spaces.splice(-1)[0];
-        const nextSpace = spaces.splice(-2, 1)[0];
-        const nextValue = _.set(value, nextSpace === spaces[0] ? '' : nextSpace, {
-          ..._.get(value, nextSpace),
-          [nextField]: next,
-        });
-        onChange(nextValue);
+    } else { // sync
+      onChange = (next) => {
+        change(produce(store, (draft) => {
+          _.set(draft, path, next);
+        }));
       };
     }
-    const path = field ? `${space}.${field}` : space;
-    const v = _.get(value, path);
-    const cp = {
+
+    const myAwaiting = store.__awaiting_map[path] || [];
+
+    const childProps = {
       ...children.props,
-      value: v,
-      onChange: change,
+      value: _.get(store, path),
+      onChange,
+      awaiting: [...myAwaiting],
     };
-    const moons = _.get(value, 'earth.moons');
-    if (field === 'moons.list' && moons && moons.__space_async__) {
-      console.log('loading...', v);
-      cp.spaceLoading = true;
+
+    if (path === 'earth.moons') {
+      console.log('earth.moons', childProps);
     }
-    if (cp.spaceLoading) {
-      console.log(children, cp);
-    }
-    return React.cloneElement(children, cp);
+
+    return React.cloneElement(children, childProps);
   };
 
   render() {
