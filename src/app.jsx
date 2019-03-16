@@ -3,9 +3,10 @@ import React, { Component } from 'react';
 import {
   SpaceProvider, Space, Ship, space,
 } from 'space';
+import InputAdaptor from './adaptors/inputAdaptor';
 
 const List = ({ value: list, awaiting }) => {
-  console.log('awaiting....', awaiting);
+  console.log('list\n', list, awaiting);
   const [pending, error] = awaiting;
   return pending
     ? 'loadnig....'
@@ -24,25 +25,6 @@ const List = ({ value: list, awaiting }) => {
       );
 };
 
-// Adaptor Element
-class InputAdaptor extends Component {
-   onChange = (e) => {
-     const { onChange } = this.props;
-     if (onChange) {
-       onChange(e.target.value);
-     }
-   };
-
-   render() {
-     const { children, value } = this.props;
-     const adaptorProps = {
-       ...children.props,
-       value,
-       onChange: this.onChange,
-     };
-     return React.cloneElement(children, adaptorProps);
-   }
-}
 
 const http = query => new Promise((resolve, reject) => {
   console.log('http: query\n', `${JSON.stringify(query, null, 2)}`);
@@ -83,8 +65,18 @@ class EmitterAdaptor extends Component {
    }
 }
 
-
 class App extends Component {
+  toPut = () => {
+    console.log('space.pull, all', space.pull(''));
+    console.log('space.pull, earth', space.pull('earth'));
+    console.log('space.pull, moons', space.pull('earth', 'moons'));
+    space.put('earth', 'moons.list', [
+      { key: 'm', w: 'put moon' },
+      { key: 'max', w: 'put spacex' },
+      { key: 'cz', w: 'put changezheng' },
+    ]);
+  };
+
   render() {
     console.log(space);
     return (
@@ -92,6 +84,9 @@ class App extends Component {
         <h1>
           9012 A Space Odyssey
         </h1>
+        <h3>
+          <button type="button" onClick={this.toPut}>pull && put</button>
+        </h3>
         <Space
           space="earth"
           init={{
@@ -101,14 +96,14 @@ class App extends Component {
             },
             birth: '2001-01-01',
             moons: {
-              list: [],
+              list: [{ w: 'init', key: 'init' }],
               page: {},
             },
           }}
         >
           <Ship field="query.name">
             <InputAdaptor>
-              <input type="query.text" />
+              <input type="text" />
             </InputAdaptor>
           </Ship>
           <Ship field="query.age">
@@ -116,6 +111,11 @@ class App extends Component {
               <input type="text" />
             </InputAdaptor>
           </Ship>
+          <hr />
+          <Ship computed={[['query.age', 'query.name'], ([age, name]) => `name is ${name}, age is ${age}`]}>
+            <input type="text" />
+          </Ship>
+          <hr />
           <Ship field="query" await="moons">
             <EmitterAdaptor>
               <input type="button" value="发射" />
@@ -124,30 +124,30 @@ class App extends Component {
           <Ship field="moons.list">
             <List />
           </Ship>
-          <Space space="mars.age">
-            <Ship>
+          <Space space="mars">
+            <Ship field="age">
               <InputAdaptor>
-                <input type="number" />
+                <input type="number" placeholder="mars.age" />
               </InputAdaptor>
             </Ship>
-            <Space space="earth.rocket">
-              <Ship>
+            <Space space="rocket">
+              <Ship field="launch">
                 <InputAdaptor>
-                  <input type="text" />
+                  <input type="text" placeholder="mars.rocket.launch" />
                 </InputAdaptor>
               </Ship>
             </Space>
           </Space>
           <Ship field="birth">
             <InputAdaptor>
-              <input type="date" />
+              <input type="date" placeholder="birth" />
             </InputAdaptor>
           </Ship>
         </Space>
-        <Space space="moon.age">
-          <Ship>
+        <Space space="moon">
+          <Ship field="age">
             <InputAdaptor>
-              <input type="number" />
+              <input type="number" placeholder="moon" />
             </InputAdaptor>
           </Ship>
         </Space>

@@ -5,7 +5,9 @@
 import React, { createContext, Component } from 'react';
 import _ from 'lodash';
 import { useImmer } from 'use-immer';
-import { createDraft, isDraft, finishDraft } from 'immer';
+import {
+  createDraft, isDraft, isDraftable, finishDraft,
+} from 'immer';
 
 
 /**
@@ -44,7 +46,7 @@ const SpaceCtx = createContext({});
 const wormhole = {
   store: null,
   put: () => {
-    throw new Error('[Space/wormhole] error, you should not seen this message.');
+    throw new Error('[space.db/wormhole] error, you should not seen this message.');
   },
 };
 
@@ -60,11 +62,12 @@ const wormhole = {
 const hole = {
   pull: (space, ...fields) => {
     const path = pathResolve(space, fields.reduce((last, field) => pathResolve(last, field), ''));
-    _.get(wormhole.store, path);
+    return _.get(wormhole.store, path);
   },
   put: (space, field, ...maybeWhat) => {
     const path = pathResolve(space, field);
     if (maybeWhat.length === 1) {
+      // will be undefine always
       return wormhole.put((draft) => {
         const what = maybeWhat[0];
         const next = typeof what === 'function'
@@ -129,20 +132,25 @@ const SpaceProvider = (props) => {
  * </Ctx.Consumer>
  * -----------------------------------------------------
  */
+
+// TODO: thinking about namespace and reset;
+// TODO: thinking about life circle
+// const namespace = { };
 class Space extends Component {
   renderSpace = (ctx) => {
-    // TODO: init check and Map Consider how to reset
     const { space: nowSpace, children, init } = this.props;
     const { space: parentSpace, store, put } = ctx;
 
     const space = pathResolve(parentSpace, nowSpace);
+    // if (namespace[space]) { }
 
-    // TODO: thinking about life circle
     const shouldInit = init && _.get(store, space) === undefined;
 
     const nextCtx = { ...ctx, space };
 
     if (shouldInit) {
+      // _.set to make first render has init value
+      _.set(nextCtx, `store.${space}`, init);
       put((draft) => {
         _.set(draft, space, init);
       });
@@ -166,9 +174,13 @@ class Space extends Component {
 
 
 /**
- * field: string
- * async: bool| string
- * computed: [[need], computer: () => {}]
+ * -----------------------------------------------------
+ * data binding core
+ *
+ * @props field: string
+ * @props async: bool| string
+ * @props computed: [[need], computer: () => {}]
+ * -----------------------------------------------------
  */
 class Ship extends Component {
   renderShip = (ctx) => {
@@ -177,12 +189,39 @@ class Ship extends Component {
     } = ctx;
 
     const {
-      children, field, await: awaiting,
+      children, field, await: awaiting, computed,
     } = this.props;
     // TODO: props check
     if (!children) {
-      console.warn('[space/Ship] should have an children');
+      console.warn('[space.db/Ship] should have an children');
       return null;
+    }
+
+    if (computed) {
+      if (field) {
+        console.warn('[space.db/Ship] [computed] can not use with [field],'
+          + ' it will be ignored with this warning.');
+      }
+      if (awaiting) {
+        console.warn('[space.db/Ship] [computed] can not use with [await],'
+          + ' it will be ignored with this warning.');
+      }
+      const [wants, computer] = computed;
+      let childProps = { ...children.props };
+      try {
+        const paths = wants.map(w => pathResolve(space, w));
+        const value = computer(paths.map(p => _.get(store, p)));
+        childProps = {
+          ...children.props,
+          value,
+        };
+      } catch (e) {
+        childProps = {
+          error: e,
+        };
+      }
+
+      return React.cloneElement(children, childProps);
     }
 
     let onChange;
@@ -226,9 +265,10 @@ class Ship extends Component {
       };
     }
 
+    const v = _.get(store, path);
     const childProps = {
       ...children.props,
-      value: createDraft(_.get(store, path)),
+      value: isDraft(v) ? v : (isDraftable(v) ? createDraft(v) : v),
       onChange,
       awaiting: findAwaiting(path, store.__awaiting_map),
     };

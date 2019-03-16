@@ -10,9 +10,10 @@ function App() {
   });
 
   function updateName(name) {
-    updatePerson((draft) => {
-      _.set(draft, 'a.b.c', name);
+    const a = updatePerson((draft) => {
+      _.set(draft, 'name', name);
     });
+    console.log('aaaaa', a);
   }
 
   function becomeOlder() {
@@ -31,12 +32,12 @@ function App() {
         {person.name}
         {person.age}
       </h1>
-      <hr/>
+      <hr />
       <div>
         {_.get(person, 'a.b.c')}
         {_.get(person, 'e.b.c')}
       </div>
-      <hr/>
+      <hr />
       <input
         onChange={(e) => {
           updateName(e.target.value);
@@ -44,7 +45,7 @@ function App() {
         value={person.name}
       />
       <br />
-      <button onClick={becomeOlder}>Older</button>
+      <button type="button" onClick={becomeOlder}>Older</button>
     </div>
   );
 }
