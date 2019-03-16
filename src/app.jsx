@@ -1,14 +1,22 @@
 /* eslint-disable react/prop-types */
 import React, { Component } from 'react';
-import { SpaceProvider, Space, Ship } from 'space';
+import {
+  SpaceProvider, Space, Ship, space,
+} from 'space';
 
 const List = ({ value: list, awaiting }) => {
-  console.log('awaiting', awaiting);
+  console.log('awaiting....', awaiting);
   const [pending, error] = awaiting;
   return pending
     ? 'loadnig....'
     : error
-      ? <pre>{JSON.stringify(error)}</pre>
+      ? (
+        <pre>
+          {error.message}
+          <br />
+          {error.stack}
+        </pre>
+      )
       : (
         <ul>
           {list.map(li => <li key={li.key}>{li.w}</li>)}
@@ -36,17 +44,21 @@ class InputAdaptor extends Component {
    }
 }
 
-const http = query => new Promise((resolve) => {
+const http = query => new Promise((resolve, reject) => {
   console.log('http: query\n', `${JSON.stringify(query, null, 2)}`);
   setTimeout(() => {
-    resolve({
-      list: [
-        { key: 'm', w: 'moon' },
-        { key: 'max', w: 'spacex' },
-        { key: 'cz', w: 'changezheng' },
-      ],
-      page: {},
-    });
+    if (Math.random() > 0.2) {
+      resolve({
+        list: [
+          { key: 'm', w: 'moon' },
+          { key: 'max', w: 'spacex' },
+          { key: 'cz', w: 'changezheng' },
+        ],
+        page: {},
+      });
+    } else {
+      reject(new Error('some thing error'));
+    }
   }, 3000);
 });
 
@@ -74,6 +86,7 @@ class EmitterAdaptor extends Component {
 
 class App extends Component {
   render() {
+    console.log(space);
     return (
       <div>
         <h1>

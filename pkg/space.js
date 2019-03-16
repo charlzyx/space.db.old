@@ -18,10 +18,35 @@ const pathResolve = (space, field) => {
   return shouldDot ? `${space || ''}.${field || ''}` : field || '';
 };
 
-
-// const withoutThenable = v => (isThenable(v) ? v : undefined);
+const findAwaiting = (path, map) => {
+  const foundKey = Object.keys(map).find(key => path.indexOf(key) > -1);
+  return map[foundKey] || [];
+};
 
 const SpaceCtx = createContext({});
+
+const hole = {
+  store: null,
+  change: () => {
+    throw new Error('[Space/hole] error, you should not seen this message.');
+  },
+};
+
+const wormhole = {
+  read: (space, field) => _.get(hole.store, pathResolve(space, field)),
+  write: (space, field, value) => {
+    // value as immer.produce
+    const { store } = hole;
+    console.log(space, field, value);
+    hole.change(store);
+  },
+  reset: (space, field) => {
+    console.log(space, field);
+  },
+};
+
+Object.freeze(wormhole);
+
 
 const SpaceProvider = (props) => {
   const [store, change] = useState({
@@ -30,6 +55,10 @@ const SpaceProvider = (props) => {
       // [path]: ['pending' | null, Error | null] | null
     },
   });
+
+  // black hole
+  hole.store = store;
+  hole.change = change;
 
   const ctx = {
     space: null,
@@ -131,18 +160,12 @@ class Ship extends Component {
       };
     }
 
-    const myAwaiting = store.__awaiting_map[path] || [];
-
     const childProps = {
       ...children.props,
       value: _.get(store, path),
       onChange,
-      awaiting: [...myAwaiting],
+      awaiting: findAwaiting(path, store.__awaiting_map),
     };
-
-    if (path === 'earth.moons') {
-      console.log('earth.moons', childProps);
-    }
 
     return React.cloneElement(children, childProps);
   };
@@ -160,4 +183,5 @@ export {
   SpaceProvider,
   Space,
   Ship,
+  wormhole as space,
 };
