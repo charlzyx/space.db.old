@@ -33,15 +33,14 @@ const hole = {
 };
 
 const wormhole = {
-  read: (space, field) => _.get(hole.store, pathResolve(space, field)),
-  write: (space, field, value) => {
-    // value as immer.produce
+  pull: space => _.get(hole.store, pathResolve(space)),
+  put: (space, producer) => {
     const { store } = hole;
-    console.log(space, field, value);
-    hole.change(store);
-  },
-  reset: (space, field) => {
-    console.log(space, field);
+    const next = produce(_.get(store, space), producer);
+    const nextStore = produce(store, (draft) => {
+      draft[space] = next;
+    });
+    hole.change(nextStore);
   },
 };
 
