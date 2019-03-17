@@ -124,6 +124,7 @@ const SpaceProvider = (props) => {
  * manager for space name and init
  * @props space unique string to namespaced module
  * @props init the init value for this space
+ * @props alive keep alive when unmount
  *
  * here is the core code.
  * <Ctx.Consumer>
@@ -137,11 +138,41 @@ const SpaceProvider = (props) => {
 // TODO: thinking about life circle
 // const namespace = { };
 class Space extends Component {
-  renderSpace = (ctx) => {
-    const { space: nowSpace, children, init } = this.props;
-    const { space: parentSpace, store, put } = ctx;
+  static spaces = {
+    // [space]: {
+    //   ins: number,
+    //   children: []
+    // },
+  };
 
-    const space = pathResolve(parentSpace, nowSpace);
+  componentWillMount() {
+    const { space } = this.props;
+    if (!Space.spaces[space]) {
+      Space.spaces[space] = {
+        ins: 1,
+        children: [],
+      };
+    } else {
+      Space.spaces[space].ins++; // eslint-disable-line
+    }
+  }
+
+  componentWillUnmount() {
+    const { space, alive } = this.props;
+    Space.spaces[space].ins --; // eslint-disable-line
+    // 没有实例了
+    if (!Space.spaces[space].ins && !alive) {
+      hole.put(space, '', (draft) => {
+        _.set(draft, space, null);
+      });
+    }
+  }
+
+  renderSpace = (ctx) => {
+    const { space, children, init } = this.props;
+    const { store, put } = ctx;
+
+    // const space = pathResolve(parentSpace, nowSpace);
     // if (namespace[space]) { }
 
     const shouldInit = init && _.get(store, space) === undefined;
@@ -268,7 +299,8 @@ class Ship extends Component {
     const v = _.get(store, path);
     const childProps = {
       ...children.props,
-      value: isDraft(v) ? v : (isDraftable(v) ? createDraft(v) : v),
+      value: v,
+      draft: isDraft(v) ? v : (isDraftable(v) ? createDraft(v) : v),
       onChange,
       awaiting: findAwaiting(path, store.__awaiting_map),
     };
