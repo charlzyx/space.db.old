@@ -64,8 +64,14 @@ const hole = {
     const path = pathResolve(space, fields.reduce((last, field) => pathResolve(last, field), ''));
     return _.get(wormhole.store, path);
   },
-  put: (space, field, ...maybeWhat) => {
-    const path = pathResolve(space, field);
+  /**
+   * absoulte space
+   * @param space
+   * @param maybeWhat
+   * @returns {(function(*=): (*|void))|*|void}
+   */
+  put: (space, ...maybeWhat) => {
+    const path = pathResolve(space);
     if (maybeWhat.length === 1) {
       // will be undefine always
       return wormhole.put((draft) => {
@@ -136,44 +142,10 @@ const SpaceProvider = (props) => {
 
 // TODO: thinking about namespace and reset;
 // TODO: thinking about life circle
-// const namespace = { };
 class Space extends Component {
-  static spaces = {
-    // [space]: {
-    //   ins: number,
-    //   children: []
-    // },
-  };
-
-  componentWillMount() {
-    const { space } = this.props;
-    if (!Space.spaces[space]) {
-      Space.spaces[space] = {
-        ins: 1,
-        children: [],
-      };
-    } else {
-      Space.spaces[space].ins++; // eslint-disable-line
-    }
-  }
-
-  componentWillUnmount() {
-    const { space, alive } = this.props;
-    Space.spaces[space].ins --; // eslint-disable-line
-    // 没有实例了
-    if (!Space.spaces[space].ins && !alive) {
-      hole.put(space, '', (draft) => {
-        _.set(draft, space, null);
-      });
-    }
-  }
-
   renderSpace = (ctx) => {
     const { space, children, init } = this.props;
     const { store, put } = ctx;
-
-    // const space = pathResolve(parentSpace, nowSpace);
-    // if (namespace[space]) { }
 
     const shouldInit = init && _.get(store, space) === undefined;
 
