@@ -15,12 +15,24 @@ module.exports = {
         exclude: /node_modules/,
         use: ['eslint-loader'],
       },
+      {
+        test: /\.(less|css)$/,
+        use: [{
+          loader: 'style-loader', // creates style nodes from JS strings
+        }, {
+          loader: 'css-loader', // translates CSS into CommonJS
+        }, {
+          loader: 'less-loader', // compiles Less to CSS
+        }],
+      },
     ],
   },
   resolve: {
     extensions: ['*', '.js', '.jsx'],
     alias: {
       space: path.resolve(__dirname, 'pkg/space'),
+      '@ui': '@material-ui/core',
+      '@icons': '@material-ui/icons',
     },
   },
   output: {

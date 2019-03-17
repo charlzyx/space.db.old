@@ -62,7 +62,7 @@ const wormhole = {
 const hole = {
   pull: (space, ...fields) => {
     const path = pathResolve(space, fields.reduce((last, field) => pathResolve(last, field), ''));
-    return _.get(wormhole.store, path);
+    return path ? _.get(wormhole.store, path) : wormhole.store;
   },
   /**
    * absoulte space
@@ -131,6 +131,7 @@ const SpaceProvider = (props) => {
  * @props space unique string to namespaced module
  * @props init the init value for this space
  * @props alive keep alive when unmount
+ * @props kill force kill when unmount
  *
  * here is the core code.
  * <Ctx.Consumer>
@@ -140,12 +141,102 @@ const SpaceProvider = (props) => {
  * -----------------------------------------------------
  */
 
-// TODO: thinking about namespace and reset;
-// TODO: thinking about life circle
+const spaceResolver = (parentSpace, nowSpace) => {
+  if (nowSpace[0] === '/') {
+    return nowSpace.slice(0, 1);
+  }
+  return `${parentSpace || ''}${parentSpace ? '.' : ''}${nowSpace}`;
+};
+
 class Space extends Component {
+  static namespaces = {};
+
+  // this space killer
+  thisSpaceKiller = false;
+
+  // the absolute space
+  absoluteSpace = '';
+
+  componentWillUnmount() {
+    const { namespaces } = Space;
+    console.log('Space.namespaces\n', namespaces, '\n', this);
+    const { alive, kill } = this.props;
+    const { absoluteSpace } = this;
+
+    const parentSpace = Object.keys(namespaces).find(sp => absoluteSpace.indexOf(sp) > -1 && absoluteSpace.indexOf(`${sp}.`) > -1);
+
+    namespaces[absoluteSpace].ins = (namespaces[absoluteSpace] && namespaces[absoluteSpace].ins)
+      ? namespaces[absoluteSpace].ins - 1 : 0;
+
+
+    if (parentSpace) {
+      const parent = namespaces[parentSpace];
+      parent.children = parent.children ? parent.children - 1 : 0;
+    }
+
+    switch (true) {
+      case kill:
+        this.thisSpaceKiller();
+        break;
+      case alive:
+        break;
+      default:
+        if (namespaces[absoluteSpace].ins <= 0 && !namespaces[absoluteSpace].children <= 0) {
+          this.thisSpaceKiller();
+        }
+    }
+  }
+
+  // registry in namespaces
+  namespaced() {
+    const { namespaces } = Space;
+    const { absoluteSpace } = this;
+
+    const parentSpace = Object.keys(namespaces).find(sp => absoluteSpace.indexOf(sp) > -1 && absoluteSpace.indexOf(`${sp}.`) > -1);
+    if (!namespaces[absoluteSpace]) {
+      namespaces[absoluteSpace] = { ins: 1, children: 0 };
+    } else {
+      namespaces[absoluteSpace].ins ++; // eslint-disable-line
+    }
+
+
+    if (parentSpace) {
+      const parent = namespaces[parentSpace];
+      parent.children = parent.children ? parent.children + 1 : 1;
+    }
+  }
+
+
   renderSpace = (ctx) => {
-    const { space, children, init } = this.props;
-    const { store, put } = ctx;
+    const {
+      space: nowSpace, children, init, put: putBind,
+    } = this.props;
+    const { space: parentSpace, store, put } = ctx;
+
+    const space = spaceResolver(parentSpace, nowSpace);
+
+    if (!this.absoluteSpace) {
+      this.absoluteSpace = space;
+      this.namespaced();
+    }
+
+    if (this.thisSpaceKiller === false) {
+      this.thisSpaceKiller = () => put((draft) => {
+        _.set(draft, space, null);
+      });
+    }
+
+
+    // TODO: warning
+    const [bindCtx, path] = putBind;
+    if (putBind && !_.get(bindCtx, path)) {
+      _.set(bindCtx, path, (producer) => {
+        put((draft) => {
+          console.log('draft', draft, space);
+          producer(_.get(draft, space), init);
+        });
+      });
+    }
 
     const shouldInit = init && _.get(store, space) === undefined;
 
@@ -180,9 +271,9 @@ class Space extends Component {
  * -----------------------------------------------------
  * data binding core
  *
- * @props field: string
- * @props async: bool| string
- * @props computed: [[need], computer: () => {}]
+ * @props bind: string
+ * @props await: bool| string
+ * @props computer: [[need], computer: () => {}]
  * -----------------------------------------------------
  */
 class Ship extends Component {
@@ -192,7 +283,7 @@ class Ship extends Component {
     } = ctx;
 
     const {
-      children, field, await: awaiting, computed,
+      children, bind, computer, await: awaiting,
     } = this.props;
     // TODO: props check
     if (!children) {
@@ -200,38 +291,13 @@ class Ship extends Component {
       return null;
     }
 
-    if (computed) {
-      if (field) {
-        console.warn('[space.db/Ship] [computed] can not use with [field],'
-          + ' it will be ignored with this warning.');
-      }
-      if (awaiting) {
-        console.warn('[space.db/Ship] [computed] can not use with [await],'
-          + ' it will be ignored with this warning.');
-      }
-      const [wants, computer] = computed;
-      let childProps = { ...children.props };
-      try {
-        const paths = wants.map(w => pathResolve(space, w));
-        const value = computer(paths.map(p => _.get(store, p)));
-        childProps = {
-          ...children.props,
-          value,
-        };
-      } catch (e) {
-        childProps = {
-          error: e,
-        };
-      }
-
-      return React.cloneElement(children, childProps);
-    }
-
     let onChange;
-    const awaitingPath = pathResolve(space, typeof awaiting === 'string' ? awaiting : field);
-    const path = pathResolve(space, field);
+    const awaitingPath = pathResolve(space, typeof awaiting === 'string' ? awaiting : bind);
+    const path = pathResolve(space, bind);
     // await: string | bool
-    if (awaiting) {
+    if (computer) {
+      onChange = () => {};
+    } else if (awaiting) {
       onChange = (v) => {
         const next = isDraft(v) ? finishDraft(v) : v;
 
@@ -268,7 +334,7 @@ class Ship extends Component {
       };
     }
 
-    const v = _.get(store, path);
+    const v = computer ? computer(_.get(store, space)) : _.get(store, path);
     const childProps = {
       ...children.props,
       value: v,
@@ -293,5 +359,5 @@ export {
   SpaceProvider,
   Space,
   Ship,
-  hole as space,
+  hole,
 };
