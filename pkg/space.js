@@ -270,6 +270,9 @@ class Space extends Component {
 /**
  * -----------------------------------------------------
  * data binding core
+ * TODO: Pull
+ * pull: string | filter | [string, filter]
+ * push: undefined | string | [string, filter]
  *
  * @props bind: string
  * @props await: bool| string

@@ -6,11 +6,11 @@ import { Space, Ship } from 'space';
 
 const Pull = (props) => {
   const {
-    children, value, onChange, pull = 'value', push,
+    children, value, onChange, draft, pull = 'value', push,
   } = props;
   const cp = {
     ...children.props,
-    [pull]: value,
+    [pull]: draft || value,
   };
   if (push) {
     const pusher = typeof push === 'function' ? push : v => v;
