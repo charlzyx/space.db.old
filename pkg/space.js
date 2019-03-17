@@ -227,7 +227,7 @@ class Space extends Component {
     }
 
 
-    // TODO: warning
+    // TODO: warning, should more simple
     const [bindCtx, path] = putBind;
     if (putBind && !_.get(bindCtx, path)) {
       _.set(bindCtx, path, (producer) => {
