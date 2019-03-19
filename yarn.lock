@@ -4918,6 +4918,11 @@ postcss@^7.0.14, postcss@^7.0.5, postcss@^7.0.6:
     source-map "^0.6.1"
     supports-color "^6.1.0"
 
+ppph@^1.2.1:
+  version "1.2.1"
+  resolved "http://registry.npm.taobao.org/ppph/download/ppph-1.2.1.tgz#d630307e7c7b365d898bedce335de3d46d525d96"
+  integrity sha1-1jAwfnx7Nl2Ji+3OM13j1G1SXZY=
+
 prelude-ls@~1.1.2:
   version "1.1.2"
   resolved "http://registry.npm.taobao.org/prelude-ls/download/prelude-ls-1.1.2.tgz#21932a549f5e52ffd9a827f570e04be62a97da54"

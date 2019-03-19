@@ -42,6 +42,7 @@
     "lodash": "^4.17.11",
     "moment": "^2.24.0",
     "normalize.css": "^8.0.1",
+    "ppph": "^1.2.1",
     "prop-types": "^15.7.2",
     "react": "^16.8.4",
     "react-dom": "^16.8.4",

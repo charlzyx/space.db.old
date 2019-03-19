@@ -2,27 +2,11 @@ import React, { Component } from 'react';
 import {
   PageHeader, List, Input, Button, Row, Col, Checkbox, Icon,
 } from 'antd';
-import { Space, Ship } from 'space';
+import { Space, Pull } from 'space';
 
-const Pull = (props) => {
-  const {
-    children, value, onChange, draft, pull = 'value', push,
-  } = props;
-  const cp = {
-    ...children.props,
-    [pull]: draft || value,
-  };
-  if (push) {
-    const pusher = typeof push === 'function' ? push : v => v;
-    cp.onChange = (e) => {
-      if (typeof onChange === 'function') {
-        onChange(pusher(e));
-      }
-    };
-  }
-  return React.cloneElement(children, cp);
-};
-
+// console.log(e, e.target);
+// return e && e.target && e.target.value;
+const domEvent = e => e.target.value;
 class Todos extends Component {
   onKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -73,6 +57,8 @@ class Todos extends Component {
     }
   };
 
+  count = ({ todos }) => `todo: ${todos.filter(i => !i.completed).length} / all: ${todos.length}`
+
 
   render() {
     return (
@@ -87,65 +73,61 @@ class Todos extends Component {
             init={{ todos: [], filter: 'all', next: '' }}
             put={[this, 'putTudousi']}
           >
-            <Ship computer={this.todosFilter}>
-              <Pull pull="dataSource">
-                <List
-                  header={(
-                    <div>
-                      <Ship bind="next">
-                        <Pull push={e => e.target.value}>
-                          <Input placeholder="add todo" onKeyDown={this.onKeyDown} />
-                        </Pull>
-                      </Ship>
-                    </div>
+            <Pull computed={[this.todosFilter]} pull="dataSource" push="no">
+              <List
+                header={(
+                  <div>
+                    <Pull bind="next" push={domEvent}>
+                      <Input placeholder="add todo" onKeyDown={this.onKeyDown} />
+                    </Pull>
+                  </div>
                   )}
-                  renderItem={item => (
-                    <List.Item
-                      actions={[
-                        <div onClick={e => this.delItem(e, item)}>
-                          <Icon type="delete" theme="twoTone" />
-                        </div>,
-                      ]}
-                    >
-                      <List.Item.Meta
-                        onClick={() => this.toggleItemChecked(item)}
-                        avatar={(
-                          <span style={{ paddingLeft: '8px' }}>
-                            <Checkbox checked={item.completed} />
-                          </span>
+                renderItem={item => (
+                  <List.Item
+                    actions={[
+                      <div onClick={e => this.delItem(e, item)}>
+                        <Icon type="delete" theme="twoTone" />
+                      </div>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      onClick={() => this.toggleItemChecked(item)}
+                      avatar={(
+                        <span style={{ paddingLeft: '8px' }}>
+                          <Checkbox checked={item.completed} />
+                        </span>
                         )}
-                        title={(
-                          <span style={item.completed ? { textDecoration: 'line-through' } : null}>
-                            {item.todo}
-                          </span>
+                      title={(
+                        <span style={item.completed ? { textDecoration: 'line-through' } : null}>
+                          {item.todo}
+                        </span>
                         )}
-                      />
-                    </List.Item>
-                  )}
-                  footer={(
-                    <Row type="flex" justify="space-between" gutter={16}>
-                      <Col span={6}>
-                        <Ship computer={({ todos }) => `todo: ${todos.filter(i => !i.completed).length} / all: ${todos.length}`}>
-                          <Pull pull="children">
-                            <Button block />
-                          </Pull>
-                        </Ship>
-                      </Col>
-                      <Col span={6}>
-                        <Button block type="primary" onClick={() => this.setFilter()}>All</Button>
-                      </Col>
-                      <Col span={6}>
-                        <Button block type="primary" onClick={() => this.setFilter('todo')}>Todos</Button>
-                      </Col>
-                      <Col span={6}>
-                        <Button block onClick={() => this.setFilter('done')}>Done</Button>
-                      </Col>
-                    </Row>
+                    />
+                  </List.Item>
                 )}
-                />
-              </Pull>
-            </Ship>
-
+                footer={(
+                  <Row type="flex" justify="space-between" gutter={16}>
+                    <Col span={6}>
+                      <Pull
+                        pull="children"
+                        computed={[this.count]}
+                      >
+                        <Button block />
+                      </Pull>
+                    </Col>
+                    <Col span={6}>
+                      <Button block type="primary" onClick={() => this.setFilter()}>All</Button>
+                    </Col>
+                    <Col span={6}>
+                      <Button block type="primary" onClick={() => this.setFilter('todo')}>Todos</Button>
+                    </Col>
+                    <Col span={6}>
+                      <Button block onClick={() => this.setFilter('done')}>Done</Button>
+                    </Col>
+                  </Row>
+                )}
+              />
+            </Pull>
           </Space>
 
         </div>

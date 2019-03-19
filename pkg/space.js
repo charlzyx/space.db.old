@@ -5,8 +5,12 @@
 import React, { createContext, Component } from 'react';
 import _ from 'lodash';
 import { useImmer } from 'use-immer';
-import {
-  createDraft, isDraft, isDraftable, finishDraft,
+import produce, {
+  createDraft,
+  isDraft,
+  isDraftable,
+  // original,
+  // finishDraft,
 } from 'immer';
 
 
@@ -15,21 +19,21 @@ import {
  * Helpers for Space
  * -----------------------------------------------------
  */
-const isThenable = p => typeof p.then === 'function';
+// const isThenable = p => typeof p.then === 'function';
 
 /**
- * TODO:
- * - Path Resolver: ./../../ and / support
  */
 const pathResolve = (space, field) => {
   const shouldDot = space && field && (field[0] !== '[');
   return shouldDot ? `${space || ''}.${field || ''}` : `${space || ''}${field || ''}`;
 };
 
-const findAwaiting = (path, map) => {
-  const foundKey = Object.keys(map).find(key => path.indexOf(key) > -1);
-  return map[foundKey] || [];
-};
+// const findAwaiting = (path, map) => {
+//   const foundKey = Object.keys(map).find(key => path.indexOf(key) > -1);
+//   return map[foundKey] || [];
+// };
+
+const isType = (o, t) => Object.prototype.toString.call(o) === `[object ${t}]`;
 
 /**
  * -----------------------------------------------------
@@ -40,7 +44,7 @@ const SpaceCtx = createContext({});
 
 /**
  * -----------------------------------------------------
- * just cache bridge for hole, private by closure.
+ * just cache bridge for hole, privated by closure.
  * -----------------------------------------------------
  */
 const wormhole = {
@@ -148,6 +152,10 @@ const spaceResolver = (parentSpace, nowSpace) => {
   return `${parentSpace || ''}${parentSpace ? '.' : ''}${nowSpace}`;
 };
 
+const findParentSpace = (absoluteSpace, namespaces) => Object.keys(namespaces)
+  .find(sp => absoluteSpace.indexOf(sp) > -1
+      && (absoluteSpace.indexOf(`${sp}.`) > -1 || absoluteSpace.indexOf(`${sp}[` > -1)));
+
 class Space extends Component {
   static namespaces = {};
 
@@ -159,12 +167,10 @@ class Space extends Component {
 
   componentWillUnmount() {
     const { namespaces } = Space;
-    console.log('Space.namespaces\n', namespaces, '\n', this);
     const { alive, kill } = this.props;
     const { absoluteSpace } = this;
 
-    const parentSpace = Object.keys(namespaces).find(sp => absoluteSpace.indexOf(sp) > -1 && absoluteSpace.indexOf(`${sp}.`) > -1);
-
+    const parentSpace = findParentSpace(absoluteSpace, namespaces);
     namespaces[absoluteSpace].ins = (namespaces[absoluteSpace] && namespaces[absoluteSpace].ins)
       ? namespaces[absoluteSpace].ins - 1 : 0;
 
@@ -192,7 +198,7 @@ class Space extends Component {
     const { namespaces } = Space;
     const { absoluteSpace } = this;
 
-    const parentSpace = Object.keys(namespaces).find(sp => absoluteSpace.indexOf(sp) > -1 && absoluteSpace.indexOf(`${sp}.`) > -1);
+    const parentSpace = findParentSpace(absoluteSpace, namespaces);
     if (!namespaces[absoluteSpace]) {
       namespaces[absoluteSpace] = { ins: 1, children: 0 };
     } else {
@@ -273,86 +279,97 @@ class Space extends Component {
  * TODO: Pull
  * pull: string | filter | [string, filter]
  * push: undefined | string | [string, filter]
- *
- * @props bind: string
- * @props await: bool| string
- * @props computer: [[need], computer: () => {}]
  * -----------------------------------------------------
  */
-class Ship extends Component {
-  renderShip = (ctx) => {
-    const {
-      space, store, put,
-    } = ctx;
 
+const pass = v => v;
+const handlePull = (pull) => {
+  switch (true) {
+    case isType(pull, 'Array'):
+      return [pull[0] || 'value', pull[1] || pass];
+    case isType(pull, 'String'):
+      return [pull || 'value', pass];
+    case isType(pull, 'Function'):
+      return ['value', pull];
+    default:
+      return ['value', pass];
+  }
+};
+
+const handlePush = (push) => {
+  switch (true) {
+    case isType(push, 'Array'):
+      return [push[0] || 'onChange', push[1] || pass];
+    case isType(push, 'String'):
+      return [push || 'onChange', pass];
+    case isType(push, 'Function'):
+      return ['onChange', push];
+    default:
+      return ['onChange', pass];
+  }
+};
+
+const handleComputed = (computed) => {
+  switch (true) {
+    case isType(computed, 'Array'):
+      return [computed[0] || pass, computed[1] || pass];
+    case isType(computed, 'Function'):
+      return [computed, pass];
+    default:
+      return [pass, pass];
+  }
+};
+
+class Pull extends Component {
+  renderPull = (ctx) => {
+    const { space, store, put } = ctx;
     const {
-      children, bind, computer, await: awaiting,
+      bind,
+      pull,
+      push,
+      computed,
+      children,
     } = this.props;
-    // TODO: props check
-    if (!children) {
-      console.warn('[space.db/Ship] should have an children');
-      return null;
-    }
 
-    let onChange;
-    const awaitingPath = pathResolve(space, typeof awaiting === 'string' ? awaiting : bind);
-    const path = pathResolve(space, bind);
-    // await: string | bool
-    if (computer) {
-      onChange = () => {};
-    } else if (awaiting) {
-      onChange = (v) => {
-        const next = isDraft(v) ? finishDraft(v) : v;
+    const path = bind ? pathResolve(space, bind) : space;
+    const [pullPath, pullFilter] = handlePull(pull);
+    const [pushMethodName, pushFilter] = handlePush(push);
+    const [getter, setter] = handleComputed(computed);
 
-        if (isThenable(next)) {
-          // update awaiting map
-          put((draft) => {
-            draft.__awaiting_map[awaitingPath] = ['pending'];
-          });
+    const v = pullFilter(computed && !bind ? getter(_.get(store, space)) : _.get(store, path));
 
-          // then
-          next.then((awaitNext) => {
-            put((draft) => {
-              _.set(draft, awaitingPath, awaitNext);
-              draft.__awaiting_map[awaitingPath] = [];
-            });
-          }).catch((e) => {
-            put((draft) => {
-              draft.__awaiting_map[awaitingPath] = [null, e];
-            });
-          });
-        } else { // sync
-          put((draft) => {
-            _.set(draft, awaitingPath, next);
-          });
-        }
-      };
-    } else { // sync
-      onChange = (v) => {
-        const next = isDraft(v) ? finishDraft(v) : v;
-
+    const onChange = (cv) => {
+      if (computed) {
+        const next = pushFilter(produce(v, setter));
         put((draft) => {
           _.set(draft, path, next);
         });
-      };
-    }
-
-    const v = computer ? computer(_.get(store, space)) : _.get(store, path);
-    const childProps = {
-      ...children.props,
-      value: v,
-      draft: isDraft(v) ? v : (isDraftable(v) ? createDraft(v) : v),
-      onChange,
-      awaiting: findAwaiting(path, store.__awaiting_map),
+      } else {
+        // const next = isDraft(cv) ? finishDraft(cv) : cv;
+        const next = pushFilter(cv);
+        put((draft) => {
+          _.set(draft, path, next);
+        });
+      }
     };
 
+    const draft = isDraft(v) ? v : (isDraftable(v) ? createDraft(v) : v);
+
+    const childProps = {
+      ...children.props,
+      [pullPath]: draft,
+    };
+    if (bind || setter !== pass) {
+      childProps[pushMethodName] = onChange;
+    }
+
     return React.cloneElement(children, childProps);
-  };
+  }
 
   render() {
     return (
       <SpaceCtx.Consumer>
-        {this.renderShip}
+        {this.renderPull}
       </SpaceCtx.Consumer>
     );
   }
@@ -361,6 +378,6 @@ class Ship extends Component {
 export {
   SpaceProvider,
   Space,
-  Ship,
+  Pull,
   hole,
 };
