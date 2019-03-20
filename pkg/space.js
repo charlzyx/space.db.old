@@ -13,7 +13,7 @@
  * - Pull
  *   1. v
  *   2. vm
- *   3. pull string | filter | [string, filter]
+ *   3. pull string | selector | [string, selector]
  *   4. push string | filter | [string, filter]
  *   5. put todo
  * - hole
