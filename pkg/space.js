@@ -1,4 +1,4 @@
-/* eslint-disable */
+/* eslint-disable react/prop-types */
 /**
  * ------------------------------------------------------------
  * api 概览
@@ -21,16 +21,22 @@
  *   2. put
  */
 
-import React, { createContext, PureComponent } from 'react';
+import React, { forwardRef, createContext, PureComponent } from 'react';
+import PropTypes from 'prop-types';
+import hoistNonReactStatics from 'hoist-non-react-statics';
 import _ from 'lodash';
-import { userImmer, useImmer } from 'use-immer';
-import imput, {
+import { useImmer } from 'use-immer';
+import {
+  setAutoFreeze,
   isDraft,
   isDraftable,
-  original,
+  // original,
   createDraft,
   finishDraft,
 } from 'immer';
+import { piper } from 'ppph';
+
+setAutoFreeze(true);
 
 
 /**
@@ -59,18 +65,18 @@ const SpaceCtx = createContext({});
 const SpaceProvider = (props) => {
   const [store, put] = useImmer({});
   const ctx = {
-    space: '',
+    space: null,
     store,
     put: (...args) => {
       put(...args);
-      console.log('put:---------------------');
-      try {
-        console.log(`${JSON.stringify(store, null, 2)}`);
-        console.log(store);
-      } catch (error) {
-        console.log(store);
-      }
-      console.log('---------------------put]');
+      // console.log('put:---------------------');
+      // try {
+      //   console.log(`${JSON.stringify(store, null, 2)}`);
+      //   console.log(store);
+      // } catch (error) {
+      //   console.log(store);
+      // }
+      // console.log('---------------------put]');
     },
   };
   const { children } = props;
@@ -94,7 +100,8 @@ const spaceResolve = (parent, now) => {
   if (now[0] === '/') {
     return now.slice(0, 1);
   }
-  return Array.isArray(parent) ? parent.concat(now) : [parent, now];
+  const parentSpace = parent === null ? [] : Array.isArray(parent) ? parent : [parent];
+  return parentSpace.concat(now);
 };
 
 /**
@@ -103,9 +110,10 @@ const spaceResolve = (parent, now) => {
  * ------------------------------------------------------------
  */
 class Space extends PureComponent {
-
   renderSpace = (ctx) => {
-    const { space: nowSpace, children, init, put: putBind } = this.props;
+    const {
+      space: nowSpace, children, init, put: putBind,
+    } = this.props;
     const { space: parentSpace, store, put } = ctx;
 
     const space = spaceResolve(parentSpace, nowSpace);
@@ -130,10 +138,9 @@ class Space extends PureComponent {
 
     return (
       <SpaceCtx.Provider value={nextCtx}>
-       {children}
+        {children}
       </SpaceCtx.Provider>
-    )
-
+    );
   }
 
 
@@ -142,7 +149,7 @@ class Space extends PureComponent {
       <SpaceCtx.Consumer>
         {this.renderSpace}
       </SpaceCtx.Consumer>
-    )
+    );
   }
 }
 
@@ -187,16 +194,16 @@ const handlePush = (push) => {
 };
 
 const pathResolve = (space, field) => {
-  return [space, field ];
-  // const shouldDot = space && field && (field[0] !== '[');
-  // return shouldDot ? `${space || ''}.${field || ''}` : `${space || ''}${field || ''}`;
+  const spaceArr = Array.isArray(space) ? space : [space];
+  const fieldArr = Array.isArray(field) ? field : [field];
+  return [...spaceArr, ...fieldArr];
 };
 
-const getDraft = v => isDraft(v)
+const getDraft = v => (isDraft(v)
   ? v
   : isDraftable(v)
     ? createDraft(v)
-    : v;
+    : v);
 
 /**
  * ------------------------------------------------------------
@@ -206,9 +213,11 @@ const getDraft = v => isDraft(v)
 
 class Atom extends PureComponent {
   renderAtom = (ctx) => {
-    const { v, pull, push, children } = this.props;
+    const {
+      v, pull, push, children,
+    } = this.props;
     const { space, store, put } = ctx;
-    if (!v) throw new Error('[Atom] must have a [v] prop.');
+    if (!v && v !== 0) throw new Error('[Atom] must have a [v] prop.');
 
     const path = v === '/' ? space : pathResolve(space, v);
 
@@ -216,20 +225,20 @@ class Atom extends PureComponent {
     const [pushEventName, pushFilter] = handlePush(push);
 
     const value = pullSelector(_.get(store, path), _.get(store, space));
+    const draftV = getDraft(value);
 
     let onChange;
 
     if (push) {
       onChange = (cv) => {
-        const next = pushFilter(cv, _.get(store, space));
+        const next = pushFilter(cv, draftV, getDraft(_.get(store, space)));
         put((ctxDraft) => {
           const n = isDraft(next) ? finishDraft(next) : next;
           _.set(ctxDraft, path, n);
         });
-      }
+      };
     }
 
-    const draftV = getDraft(value);
 
     const childrenProps = {
       ...children.props,
@@ -245,7 +254,6 @@ class Atom extends PureComponent {
     }
 
     return React.cloneElement(children, childrenProps);
-
   }
 
   render() {
@@ -253,9 +261,114 @@ class Atom extends PureComponent {
       <SpaceCtx.Consumer>
         {this.renderAtom}
       </SpaceCtx.Consumer>
-    )
+    );
   }
 }
+
+/**
+ * --------------------------------------------
+ * AtomPipeHOC
+ * --------------------------------------------
+ * introduce your pipeHOC
+ */
+const AtomPipeHOC = (Comp) => {
+  class AtomHOC extends PureComponent {
+    static displayName = `AtomHOC${Comp.displayName || Comp.name || ''}`;
+
+    static propTypes = {
+      forwardRef: PropTypes.oneOfType([
+        PropTypes.func,
+        // Element is just window.Element, this type for React.createRef()
+        PropTypes.shape({ current: PropTypes.instanceOf(Element) }),
+      ]),
+    };
+
+    static defaultProps = {
+      forwardRef: null,
+    }
+
+    renderAtom = (ctx) => {
+      const { v, pull, push } = this.props;
+      const { space, store, put } = ctx;
+      if (!v && v !== 0) throw new Error('[Atom] must have a [v] prop.');
+
+      const path = v === '/' ? space : pathResolve(space, v);
+
+      const [pullPath, pullSelector] = handlePull(pull);
+      const [pushEventName, pushFilter] = handlePush(push);
+
+      const value = pullSelector(_.get(store, path), _.get(store, space));
+      const draftV = getDraft(value);
+
+      let onChange;
+
+      if (push) {
+        onChange = (cv) => {
+          const next = pushFilter(cv, draftV, getDraft(_.get(store, space)));
+          put((ctxDraft) => {
+            const n = isDraft(next) ? finishDraft(next) : next;
+            _.set(ctxDraft, path, n);
+          });
+        };
+      }
+
+
+      const childrenProps = {
+        ...this.props,
+        [pullPath]: draftV,
+      };
+
+      if (push) {
+        childrenProps[pushEventName] = onChange;
+      }
+
+      const nextProps = {
+        ...childrenProps,
+        ref: this.props.forwardRef,
+      };
+      return <Comp {...nextProps} />;
+    }
+
+    render() {
+      return (
+        <SpaceCtx.Consumer>
+          {this.renderAtom}
+        </SpaceCtx.Consumer>
+      );
+    }
+  }
+
+  hoistNonReactStatics(AtomHOC, Comp);
+  return forwardRef((props, ref) => <AtomHOC {...props} forwardRef={ref} />);
+};
+
+/**
+ * @param who required. type: String;
+ * @param when required. type: (type, props) => boolean | any;
+ * @param how required. type: (Comp: ReactElement) => ReactElement;
+ * @param why required. type: (e) => void;
+ * @param ph type: [pH, key];
+ *
+ */
+
+/**
+ * --------------------------------------------
+ * pipe
+ * --------------------------------------------
+ * introduce your pipe
+ */
+const AtomPipe = piper({
+  who: 'atom', // name for pipe
+  when: (type, props) => props.atom, // condition to use the pipe
+  how: AtomPipeHOC, // the HOC for this pipe, means how to deal with it
+  why: (e) => { // a callback will be call when error occur.
+    console.error('[AtomPipeHOC] error: ');
+    console.dir(e);
+  },
+  // pH: means sort weight, just like pH, the lower pH value, the heighter sort weight;
+  // key: pependent key name in JSX, which will be sort by write order;
+  ph: [7, ''],
+});
 
 /**
  * ------------------------------------------------------------
@@ -263,8 +376,9 @@ class Atom extends PureComponent {
  * ------------------------------------------------------------
  */
 
- export {
-   SpaceProvider,
-   Space,
-   Atom,
- }
+export {
+  SpaceProvider,
+  Space,
+  Atom,
+  AtomPipe,
+};
