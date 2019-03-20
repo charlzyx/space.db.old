@@ -1,64 +1,83 @@
-import React, { Component } from 'react';
+/* eslint-disable react/prop-types, no-unused-vars */
+import React, { PureComponent } from 'react';
 import {
-  PageHeader, List, Input, Button, Row, Col, Checkbox, Icon,
+  PageHeader, Divider,
+  //  List, Input, Button, Row, Col, Checkbox, Icon,
 } from 'antd';
-import { Space, Pull } from 'space';
+import { Space, Atom } from 'space';
+import './todo.less';
 
-// console.log(e, e.target);
-// return e && e.target && e.target.value;
-const domEvent = e => e.target.value;
-class Todos extends Component {
-  onKeyDown = (e) => {
+const e2v = e => e.target.value;
+const Show = props => <pre>{JSON.stringify(Object.keys(props), null, 2)}</pre>;
+const TodoList = (props) => {
+  const { list, onChange, todoKiller } = props;
+
+  return list.length > 0 ? (
+    <ul>
+      {list.map(todo => (
+        <li key={todo.key}>
+          <button
+            type="button"
+            onClick={() => {
+              todo.done = !todo.done;
+              onChange(list);
+            }}
+          >
+            {`[${todo.done ? '√' : ' '}]`}
+          </button>
+          {todo.todo}
+          <button type="button" onClick={() => { todoKiller(todo); }}>
+            remove
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+    : <div>暂无数据</div>;
+};
+
+class Todos extends PureComponent {
+  setPut = (put) => {
+    this.putData = put;
+  };
+
+  onNextKeyDown = (e) => {
     if (e.key === 'Enter') {
-      this.putTudousi((todousi) => {
-        const { todos, next } = todousi;
-        if (!next) return;
-        todos.push({ todo: next, completed: false, key: +new Date() });
-        todousi.next = '';
+      this.putData((data) => {
+        const { todos, next } = data;
+        if (!data.next) return;
+        todos.push({
+          todo: next,
+          done: false,
+          key: +new Date(),
+        });
+        data.next = '';
       });
     }
   }
 
-  toggleItemChecked = (item) => {
-    this.putTudousi((todousi) => {
-      const { todos } = todousi;
-      const found = todos.findIndex(i => i.key === item.key);
-      if (found > -1) {
-        todos[found].completed = !todos[found].completed;
-      }
-    });
-  };
-
-  delItem = (e, item) => {
-    this.putTudousi((todousi) => {
-      const { todos } = todousi;
-      const found = todos.findIndex(i => i.key === item.key);
-      if (found > -1) {
-        todos.splice(found, 1);
-      }
+  todoKiller = (todo) => {
+    if (!todo) return;
+    this.putData((data) => {
+      const { todos } = data;
+      const index = todos.findIndex(td => td.key === todo.key);
+      todos.splice(index, 1);
     });
   }
 
-  setFilter = (filter) => {
-    this.putTudousi((todousi) => {
-      todousi.filter = filter;
+  todosSelector = (todos, space) => {
+    const { filter } = space;
+    return todos.filter((td) => {
+      switch (filter) {
+        case 'done':
+          return td.done;
+        case 'todo':
+          return !td.done;
+        default:
+          return true;
+      }
     });
   }
-
-  todosFilter = (tudousi) => {
-    const { filter, todos } = tudousi;
-    switch (filter) {
-      case 'todo':
-        return todos.filter(i => !i.completed);
-      case 'done':
-        return todos.filter(i => i.completed);
-      default:
-        return todos;
-    }
-  };
-
-  count = ({ todos }) => `todo: ${todos.filter(i => !i.completed).length} / all: ${todos.length}`
-
 
   render() {
     return (
@@ -67,69 +86,31 @@ class Todos extends Component {
           title="土豆丝"
           subTitle="Todos by space.db"
         />
+        <Divider />
         <div>
           <Space
-            space="todousi"
+            space={Symbol('data')}
             init={{ todos: [], filter: 'all', next: '' }}
-            put={[this, 'putTudousi']}
+            put={this.setPut}
           >
-            <Pull computed={[this.todosFilter]} pull="dataSource" push="no">
-              <List
-                header={(
-                  <div>
-                    <Pull bind="next" push={domEvent}>
-                      <Input placeholder="add todo" onKeyDown={this.onKeyDown} />
-                    </Pull>
-                  </div>
-                  )}
-                renderItem={item => (
-                  <List.Item
-                    actions={[
-                      <div onClick={e => this.delItem(e, item)}>
-                        <Icon type="delete" theme="twoTone" />
-                      </div>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      onClick={() => this.toggleItemChecked(item)}
-                      avatar={(
-                        <span style={{ paddingLeft: '8px' }}>
-                          <Checkbox checked={item.completed} />
-                        </span>
-                        )}
-                      title={(
-                        <span style={item.completed ? { textDecoration: 'line-through' } : null}>
-                          {item.todo}
-                        </span>
-                        )}
-                    />
-                  </List.Item>
-                )}
-                footer={(
-                  <Row type="flex" justify="space-between" gutter={16}>
-                    <Col span={6}>
-                      <Pull
-                        pull="children"
-                        computed={[this.count]}
-                      >
-                        <Button block />
-                      </Pull>
-                    </Col>
-                    <Col span={6}>
-                      <Button block type="primary" onClick={() => this.setFilter()}>All</Button>
-                    </Col>
-                    <Col span={6}>
-                      <Button block type="primary" onClick={() => this.setFilter('todo')}>Todos</Button>
-                    </Col>
-                    <Col span={6}>
-                      <Button block onClick={() => this.setFilter('done')}>Done</Button>
-                    </Col>
-                  </Row>
-                )}
-              />
-            </Pull>
+            <Atom v="next" pull push={e2v}>
+              <input type="text" placeholder="input here..." onKeyDown={this.onNextKeyDown} />
+            </Atom>
+            <Atom v="todos" pull={['list', this.todosSelector]} push>
+              <TodoList todoKiller={this.todoKiller} />
+            </Atom>
+            <div>
+              <Atom v="filter" pull="active" push={['onClick', () => 'all']}>
+                {props => (<button {...props} type="button"> All </button>)}
+              </Atom>
+              <Atom v="filter" pull="active" push={['onClick', () => 'todo']}>
+                {props => (<button {...props} type="button"> Todos </button>)}
+              </Atom>
+              <Atom v="filter" pull="active" push={['onClick', () => 'done']}>
+                {props => (<button {...props} type="button"> Dones </button>)}
+              </Atom>
+            </div>
           </Space>
-
         </div>
       </div>
 

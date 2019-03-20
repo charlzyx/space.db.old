@@ -1,288 +1,159 @@
-/* eslint-disable react/prop-types,no-param-reassign */
+/* eslint-disable */
 /**
- * Space/DataBinding
+ * ------------------------------------------------------------
+ * api 概览
+ * ------------------------------------------------------------
+ * - SpaceProvider
+ * - Space
+ *   1. space Symbol(comp) | path
+ *   2. init Object
+ *   3. live
+ *   4. kill
+ *   5. put insdiffer = differ
+ * - Pull
+ *   1. v
+ *   2. vm
+ *   3. pull string | filter | [string, filter]
+ *   4. push string | filter | [string, filter]
+ *   5. put todo
+ * - hole
+ *   1. store
+ *   2. put
  */
-import React, { createContext, Component } from 'react';
+
+import React, { createContext, PureComponent } from 'react';
 import _ from 'lodash';
-import { useImmer } from 'use-immer';
-import produce, {
-  createDraft,
+import { userImmer, useImmer } from 'use-immer';
+import imput, {
   isDraft,
   isDraftable,
-  // original,
-  // finishDraft,
+  original,
+  createDraft,
+  finishDraft,
 } from 'immer';
 
 
 /**
- * -----------------------------------------------------
- * Helpers for Space
- * -----------------------------------------------------
+ * ------------------------------------------------------------
+ * Helpers
+ * ------------------------------------------------------------
  */
-// const isThenable = p => typeof p.then === 'function';
 
-/**
- */
-const pathResolve = (space, field) => {
-  const shouldDot = space && field && (field[0] !== '[');
-  return shouldDot ? `${space || ''}.${field || ''}` : `${space || ''}${field || ''}`;
-};
-
-// const findAwaiting = (path, map) => {
-//   const foundKey = Object.keys(map).find(key => path.indexOf(key) > -1);
-//   return map[foundKey] || [];
-// };
 
 const isType = (o, t) => Object.prototype.toString.call(o) === `[object ${t}]`;
 
 /**
- * -----------------------------------------------------
- * Core Context
- * -----------------------------------------------------
+ * ------------------------------------------------------------
+ * The Context
+ * ------------------------------------------------------------
  */
+
 const SpaceCtx = createContext({});
 
 /**
- * -----------------------------------------------------
- * just cache bridge for hole, privated by closure.
- * -----------------------------------------------------
+ * ------------------------------------------------------------
+ * SpaceProvider
+ * ------------------------------------------------------------
  */
-const wormhole = {
-  store: null,
-  put: () => {
-    throw new Error('[space.db/wormhole] error, you should not seen this message.');
-  },
-};
 
-/**
- * -----------------------------------------------------
- * getter and setter to export
- * @function pull(space, ...fields) => any
- * @type what notFunction | funcAsProducer
- * @function put(space, field) => putWhat
- * @function put(space, field, what) => next
- * -----------------------------------------------------
- */
-const hole = {
-  pull: (space, ...fields) => {
-    const path = pathResolve(space, fields.reduce((last, field) => pathResolve(last, field), ''));
-    return path ? _.get(wormhole.store, path) : wormhole.store;
-  },
-  /**
-   * absoulte space
-   * @param space
-   * @param maybeWhat
-   * @returns {(function(*=): (*|void))|*|void}
-   */
-  put: (space, ...maybeWhat) => {
-    const path = pathResolve(space);
-    if (maybeWhat.length === 1) {
-      // will be undefine always
-      return wormhole.put((draft) => {
-        const what = maybeWhat[0];
-        const next = typeof what === 'function'
-          ? what(_.get(draft, path))
-          : what;
-        _.set(draft, path, next);
-      });
-    }
-    const putWhat = w => wormhole.put((draft) => {
-      const next = typeof w === 'function'
-        ? w(_.get(draft, path))
-        : w;
-      _.set(draft, path, next);
-    });
-    return putWhat;
-  },
-};
-
-// protected out side change
-Object.freeze(hole);
-
-/**
- * -----------------------------------------------------
- * core provider, provider store and put
- * -----------------------------------------------------
- */
 const SpaceProvider = (props) => {
-  const [store, put] = useImmer({
-    // 异步表
-    __awaiting_map: {
-      // [path]: ['pending' | null, Error | null] | null
-    },
-  });
-
-  wormhole.store = store;
-  wormhole.put = put;
-
+  const [store, put] = useImmer({});
   const ctx = {
-    space: null,
+    space: '',
     store,
-    put,
+    put: (...args) => {
+      put(...args);
+      console.log('put:---------------------');
+      try {
+        console.log(`${JSON.stringify(store, null, 2)}`);
+        console.log(store);
+      } catch (error) {
+        console.log(store);
+      }
+      console.log('---------------------put]');
+    },
   };
-
+  const { children } = props;
   return (
     <SpaceCtx.Provider value={ctx}>
-      {props.children}
+      {children}
     </SpaceCtx.Provider>
   );
 };
 
 /**
- * -----------------------------------------------------
- * MOST INTERESTING! CORE IDEA!
- * manager for space name and init
- * @props space unique string to namespaced module
- * @props init the init value for this space
- * @props alive keep alive when unmount
- * @props kill force kill when unmount
- *
- * here is the core code.
- * <Ctx.Consumer>
- *   <Ctx.Provider>
- *   </Ctx.Provider>
- * </Ctx.Consumer>
- * -----------------------------------------------------
+ * ------------------------------------------------------------
+ * Space Helpers
+ * ------------------------------------------------------------
  */
 
-const spaceResolver = (parentSpace, nowSpace) => {
-  if (nowSpace[0] === '/') {
-    return nowSpace.slice(0, 1);
+const spaceResolve = (parent, now) => {
+  if (isType(now, 'Symbol')) {
+    return now;
   }
-  return `${parentSpace || ''}${parentSpace ? '.' : ''}${nowSpace}`;
+  if (now[0] === '/') {
+    return now.slice(0, 1);
+  }
+  return Array.isArray(parent) ? parent.concat(now) : [parent, now];
 };
 
-const findParentSpace = (absoluteSpace, namespaces) => Object.keys(namespaces)
-  .find(sp => absoluteSpace.indexOf(sp) > -1
-      && (absoluteSpace.indexOf(`${sp}.`) > -1 || absoluteSpace.indexOf(`${sp}[` > -1)));
-
-class Space extends Component {
-  static namespaces = {};
-
-  // this space killer
-  thisSpaceKiller = false;
-
-  // the absolute space
-  absoluteSpace = '';
-
-  componentWillUnmount() {
-    const { namespaces } = Space;
-    const { alive, kill } = this.props;
-    const { absoluteSpace } = this;
-
-    const parentSpace = findParentSpace(absoluteSpace, namespaces);
-    namespaces[absoluteSpace].ins = (namespaces[absoluteSpace] && namespaces[absoluteSpace].ins)
-      ? namespaces[absoluteSpace].ins - 1 : 0;
-
-
-    if (parentSpace) {
-      const parent = namespaces[parentSpace];
-      parent.children = parent.children ? parent.children - 1 : 0;
-    }
-
-    switch (true) {
-      case kill:
-        this.thisSpaceKiller();
-        break;
-      case alive:
-        break;
-      default:
-        if (namespaces[absoluteSpace].ins <= 0 && !namespaces[absoluteSpace].children <= 0) {
-          this.thisSpaceKiller();
-        }
-    }
-  }
-
-  // registry in namespaces
-  namespaced() {
-    const { namespaces } = Space;
-    const { absoluteSpace } = this;
-
-    const parentSpace = findParentSpace(absoluteSpace, namespaces);
-    if (!namespaces[absoluteSpace]) {
-      namespaces[absoluteSpace] = { ins: 1, children: 0 };
-    } else {
-      namespaces[absoluteSpace].ins ++; // eslint-disable-line
-    }
-
-
-    if (parentSpace) {
-      const parent = namespaces[parentSpace];
-      parent.children = parent.children ? parent.children + 1 : 1;
-    }
-  }
-
+/**
+ * ------------------------------------------------------------
+ * Space
+ * ------------------------------------------------------------
+ */
+class Space extends PureComponent {
 
   renderSpace = (ctx) => {
-    const {
-      space: nowSpace, children, init, put: putBind,
-    } = this.props;
+    const { space: nowSpace, children, init, put: putBind } = this.props;
     const { space: parentSpace, store, put } = ctx;
 
-    const space = spaceResolver(parentSpace, nowSpace);
+    const space = spaceResolve(parentSpace, nowSpace);
 
-    if (!this.absoluteSpace) {
-      this.absoluteSpace = space;
-      this.namespaced();
-    }
-
-    if (this.thisSpaceKiller === false) {
-      this.thisSpaceKiller = () => put((draft) => {
-        _.set(draft, space, null);
-      });
-    }
-
-
-    // TODO: warning, should more simple
-    const [bindCtx, path] = putBind;
-    if (putBind && !_.get(bindCtx, path)) {
-      _.set(bindCtx, path, (producer) => {
-        put((draft) => {
-          console.log('draft', draft, space);
-          producer(_.get(draft, space), init);
+    if (putBind) {
+      putBind((differ) => {
+        put((ctxDraft) => {
+          differ(_.get(ctxDraft, space));
         });
       });
     }
 
     const shouldInit = init && _.get(store, space) === undefined;
-
     const nextCtx = { ...ctx, space };
 
     if (shouldInit) {
-      // _.set to make first render has init value
-      _.set(nextCtx, `store.${space}`, init);
-      put((draft) => {
-        _.set(draft, space, init);
+      _.set(nextCtx, ['store', space], init);
+      put((ctxDraft) => {
+        _.set(ctxDraft, space, init);
       });
     }
 
     return (
       <SpaceCtx.Provider value={nextCtx}>
-        {children}
+       {children}
       </SpaceCtx.Provider>
-    );
-  };
+    )
+
+  }
+
 
   render() {
     return (
       <SpaceCtx.Consumer>
         {this.renderSpace}
       </SpaceCtx.Consumer>
-    );
+    )
   }
 }
 
-
 /**
- * -----------------------------------------------------
- * data binding core
- * TODO: Pull
- * pull: string | filter | [string, filter]
- * push: undefined | string | [string, filter]
- * -----------------------------------------------------
+ * ------------------------------------------------------------
+ * Atom Helpers
+ * ------------------------------------------------------------
  */
 
 const pass = v => v;
+
 const handlePull = (pull) => {
   switch (true) {
     case isType(pull, 'Array'):
@@ -291,8 +162,10 @@ const handlePull = (pull) => {
       return [pull || 'value', pass];
     case isType(pull, 'Function'):
       return ['value', pull];
-    default:
+    case pull:
       return ['value', pass];
+    default:
+      throw new Error('[Atom] unsupport [pull] param type');
   }
 };
 
@@ -304,80 +177,94 @@ const handlePush = (push) => {
       return [push || 'onChange', pass];
     case isType(push, 'Function'):
       return ['onChange', push];
-    default:
+    case push:
       return ['onChange', pass];
-  }
-};
-
-const handleComputed = (computed) => {
-  switch (true) {
-    case isType(computed, 'Array'):
-      return [computed[0] || pass, computed[1] || pass];
-    case isType(computed, 'Function'):
-      return [computed, pass];
+    case isType(push, 'Undefined'):
+      return [];
     default:
-      return [pass, pass];
+      throw new Error('[Atom] unsupport [push] param type');
   }
 };
 
-class Pull extends Component {
-  renderPull = (ctx) => {
+const pathResolve = (space, field) => {
+  return [space, field ];
+  // const shouldDot = space && field && (field[0] !== '[');
+  // return shouldDot ? `${space || ''}.${field || ''}` : `${space || ''}${field || ''}`;
+};
+
+const getDraft = v => isDraft(v)
+  ? v
+  : isDraftable(v)
+    ? createDraft(v)
+    : v;
+
+/**
+ * ------------------------------------------------------------
+ * Atom
+ * ------------------------------------------------------------
+ */
+
+class Atom extends PureComponent {
+  renderAtom = (ctx) => {
+    const { v, pull, push, children } = this.props;
     const { space, store, put } = ctx;
-    const {
-      bind,
-      pull,
-      push,
-      computed,
-      children,
-    } = this.props;
+    if (!v) throw new Error('[Atom] must have a [v] prop.');
 
-    const path = bind ? pathResolve(space, bind) : space;
-    const [pullPath, pullFilter] = handlePull(pull);
-    const [pushMethodName, pushFilter] = handlePush(push);
-    const [getter, setter] = handleComputed(computed);
+    const path = v === '/' ? space : pathResolve(space, v);
 
-    const v = pullFilter(computed && !bind ? getter(_.get(store, space)) : _.get(store, path));
+    const [pullPath, pullSelector] = handlePull(pull);
+    const [pushEventName, pushFilter] = handlePush(push);
 
-    const onChange = (cv) => {
-      if (computed) {
-        const next = pushFilter(produce(v, setter));
-        put((draft) => {
-          _.set(draft, path, next);
-        });
-      } else {
-        // const next = isDraft(cv) ? finishDraft(cv) : cv;
-        const next = pushFilter(cv);
-        put((draft) => {
-          _.set(draft, path, next);
+    const value = pullSelector(_.get(store, path), _.get(store, space));
+
+    let onChange;
+
+    if (push) {
+      onChange = (cv) => {
+        const next = pushFilter(cv, _.get(store, space));
+        put((ctxDraft) => {
+          const n = isDraft(next) ? finishDraft(next) : next;
+          _.set(ctxDraft, path, n);
         });
       }
-    };
-
-    const draft = isDraft(v) ? v : (isDraftable(v) ? createDraft(v) : v);
-
-    const childProps = {
-      ...children.props,
-      [pullPath]: draft,
-    };
-    if (bind || setter !== pass) {
-      childProps[pushMethodName] = onChange;
     }
 
-    return React.cloneElement(children, childProps);
+    const draftV = getDraft(value);
+
+    const childrenProps = {
+      ...children.props,
+      [pullPath]: draftV,
+    };
+
+    if (push) {
+      childrenProps[pushEventName] = onChange;
+    }
+
+    if (isType(children, 'Function')) {
+      return children(childrenProps);
+    }
+
+    return React.cloneElement(children, childrenProps);
+
   }
 
   render() {
     return (
       <SpaceCtx.Consumer>
-        {this.renderPull}
+        {this.renderAtom}
       </SpaceCtx.Consumer>
-    );
+    )
   }
 }
 
-export {
-  SpaceProvider,
-  Space,
-  Pull,
-  hole,
-};
+/**
+ * ------------------------------------------------------------
+ * exports
+ * ------------------------------------------------------------
+ */
+
+ export {
+   SpaceProvider,
+   Space,
+   Atom,
+ }
