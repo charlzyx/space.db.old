@@ -6,7 +6,7 @@ import {
 import {
   Space, discover, Atom,
 } from 'space';
-import { TodoList as TodoSpace } from '../namespace';
+import { TodoList as TodoSpace } from '@namespace';
 import actions from './actions';
 import './todo.less';
 
@@ -164,13 +164,21 @@ class Todos extends PureComponent {
                 filter: 'all',
               }}
             >
-              <Atom vm="next" push={e2v} type="text">
+              <input
+                atom
+                vm="next"
+                push={e2v}
+                placeholder="input here..."
+                onKeyDown={this.onNextKeyDown}
+                type="text"
+              />
+              {/* <Atom vm="next" push={e2v} type="text">
                 <input
                   type="text"
                   placeholder="input here..."
                   onKeyDown={this.onNextKeyDown}
                 />
-              </Atom>
+              </Atom> */}
               <Atom v="todos" pull={['list', this.todosSelector]}>
                 <TodoList toggleTodo={this.toggleTodo} todoKiller={this.todoKiller} />
               </Atom>

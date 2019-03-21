@@ -8,8 +8,8 @@ import 'antd/dist/antd.css';
 import 'normalize.css/normalize.css';
 import './app.less';
 import ppph, { piper } from 'ppph';
+import { Atomic } from 'space';
 import App from './app';
-import { Atomic } from '../pkg/space';
 
 const atomic = piper({
   who: 'atomic',

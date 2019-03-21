@@ -209,11 +209,12 @@ class Space extends PureComponent {
        * --------------------------------------------------------
        * 这个 set 是为了保证, 在子组件第一次渲染的时候
        * 就能拿到自己设置的初始值
+       * BUG: _.set(nextCtx, ['store', space], init) 就是设置不成功
        * --------------------------------------------------------
        */
-      _.set(nextCtx, ['store', space], init);
+      _.set(nextCtx, ['store'], { ...nextCtx.store, [space]: init });
       put((ctxDraft) => {
-        _.set(ctxDraft, [space], init);
+        _.set(ctxDraft, space, init);
       });
     }
 
@@ -370,10 +371,8 @@ class Atom extends PureComponent {
         const next = pushFilter(cv, draftV, draftify(_.get(store, space)));
 
         put((ctxDraft) => {
-          if (next) {
-            const n = isDraft(next) ? finishDraft(next) : next;
-            _.set(ctxDraft, path, n);
-          }
+          const n = isDraft(next) ? finishDraft(next) : next;
+          _.set(ctxDraft, path, n);
         });
       };
     }
@@ -396,6 +395,7 @@ class Atom extends PureComponent {
       return render(childrenProps);
     }
 
+    console.log(children);
     return React.cloneElement(children, childrenProps);
   }
 

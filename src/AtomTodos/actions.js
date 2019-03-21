@@ -1,5 +1,5 @@
-import { discover } from '../../pkg/space';
-import { TodoList } from '../namespace';
+import { discover } from 'space';
+import { TodoList } from '@namespace';
 
 const space = discover(TodoList);
 

@@ -1,2 +1,3 @@
+export const Menus = 'menus';
 export const TodoList = Symbol('todolist');
-export const Other = 'other';
+export const AtomForm = Symbol('atomform');

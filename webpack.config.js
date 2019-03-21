@@ -31,8 +31,8 @@ module.exports = {
     extensions: ['*', '.js', '.jsx'],
     alias: {
       space: path.resolve(__dirname, 'pkg/space'),
-      '@ui': '@material-ui/core',
-      '@icons': '@material-ui/icons',
+      '@namespace': path.resolve(__dirname, 'src/namespace'),
+      '@helper': path.resolve(__dirname, 'src/helpers'),
     },
   },
   output: {
