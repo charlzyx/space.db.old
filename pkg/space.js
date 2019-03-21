@@ -4,27 +4,36 @@
  * api 概览
  * ------------------------------------------------------------
  * - SpaceProvider
+ *
  * - Space
- *   1. space Symbol(comp) | path
- *   2. init Object
+ *   1. space Symbol(comp) | namespace
+ *   2. init Object | Array
  *   3. live
  *   4. kill
- *   5. put insdiffer = differ
- * - Pull
+ *
+ * - Atom
  *   1. v
  *   2. vm
- *   3. pull string | selector | [string, selector]
- *   4. push string | filter | [string, filter]
- *   5. put todo
- * - hole
- *   1. store
- *   2. put
+ *   3. pull true | string | selector | [string, selector]
+ *   4. push true | string | filter | [string, filter]
+ *
+ * - action
+ *   (namespace, actions) => void;
+ *
+ * - useSpace
+ *   (namespace) => [data, put, actions]
+ *
  */
 
-import React, { forwardRef, createContext, PureComponent } from 'react';
-import PropTypes from 'prop-types';
-import hoistNonReactStatics from 'hoist-non-react-statics';
+import React, {
+  //  forwardRef,
+  createContext,
+  PureComponent,
+} from 'react';
+// import PropTypes from 'prop-types';
+// import hoistNonReactStatics from 'hoist-non-react-statics';
 import _ from 'lodash';
+import _castPath from 'lodash/_castPath';
 import { useImmer } from 'use-immer';
 import {
   setAutoFreeze,
@@ -34,7 +43,6 @@ import {
   createDraft,
   finishDraft,
 } from 'immer';
-import { piper } from 'ppph';
 
 setAutoFreeze(true);
 
@@ -58,27 +66,36 @@ const SpaceCtx = createContext({});
 
 /**
  * ------------------------------------------------------------
- * SpaceProvider
+ * The bridge, in space named wormhole
  * ------------------------------------------------------------
  */
+const wormhole = {
+  store: null,
+  put: null,
+  actions: null,
+  puts: null,
+};
+
+const action = (namespace, differ) => {
+  const { actions, put, store } = wormhole;
+  const spaceStore = _.get(namespace, store);
+  // FIXME:
+  actions[namespace] = put(spaceStore, differ);
+};
+
+const useSpace = (namespace) => {
+  const { store, puts, actions } = wormhole;
+  return [store, puts, actions].map(i => _.get(i, namespace));
+};
 
 const SpaceProvider = (props) => {
   const [store, put] = useImmer({});
   const ctx = {
-    space: null,
     store,
-    put: (...args) => {
-      put(...args);
-      // console.log('put:---------------------');
-      // try {
-      //   console.log(`${JSON.stringify(store, null, 2)}`);
-      //   console.log(store);
-      // } catch (error) {
-      //   console.log(store);
-      // }
-      // console.log('---------------------put]');
-    },
+    put,
   };
+  wormhole.store = store;
+  wormhole.put = put;
   const { children } = props;
   return (
     <SpaceCtx.Provider value={ctx}>
@@ -87,22 +104,6 @@ const SpaceProvider = (props) => {
   );
 };
 
-/**
- * ------------------------------------------------------------
- * Space Helpers
- * ------------------------------------------------------------
- */
-
-const spaceResolve = (parent, now) => {
-  if (isType(now, 'Symbol')) {
-    return now;
-  }
-  if (now[0] === '/') {
-    return now.slice(0, 1);
-  }
-  const parentSpace = parent === null ? [] : Array.isArray(parent) ? parent : [parent];
-  return parentSpace.concat(now);
-};
 
 /**
  * ------------------------------------------------------------
@@ -110,39 +111,69 @@ const spaceResolve = (parent, now) => {
  * ------------------------------------------------------------
  */
 class Space extends PureComponent {
+  componentWillUnmount() {
+    // TODO: alive | kill | auto
+  }
+
   renderSpace = (ctx) => {
     const {
-      space: nowSpace, children, init, put: putBind,
+      space, children, init,
     } = this.props;
-    const { space: parentSpace, store, put } = ctx;
-
-    const space = spaceResolve(parentSpace, nowSpace);
-
-    if (putBind) {
-      putBind((differ) => {
-        put((ctxDraft) => {
-          differ(_.get(ctxDraft, space));
-        });
-      });
-    }
+    const { store, put } = ctx;
 
     const shouldInit = init && _.get(store, space) === undefined;
+
     const nextCtx = { ...ctx, space };
 
+    /**
+     * --------------------------------------------------------
+     * spacePut 没有透传下去是为了 Atom 里面更加灵活, 比如:
+     * path可以使用 '/' 指向 space
+     * --------------------------------------------------------
+     */
+    const spacePut = (differ) => {
+      put((ctxDraft) => {
+        const spaceStore = _.get(ctxDraft, [space]);
+        const maybeNext = differ(spaceStore);
+        // 并不期望有返回值, 跟 immer 是一样的, 但是如果真的返回了,
+        // 还是要处理
+        if (maybeNext !== undefined) {
+          _.set(ctxDraft, [space], maybeNext);
+        }
+      });
+    };
+
+    /**
+     * --------------------------------------------------------
+     * export put for this space
+     * --------------------------------------------------------
+     */
+    wormhole.puts[space] = spacePut;
+
     if (shouldInit) {
+      /**
+       * --------------------------------------------------------
+       * 这个 set 是为了保证, 在子组件第一次渲染的时候
+       * 就能拿到自己设置的初始值
+       * --------------------------------------------------------
+       */
       _.set(nextCtx, ['store', space], init);
       put((ctxDraft) => {
-        _.set(ctxDraft, space, init);
+        _.set(ctxDraft, [space], init);
       });
     }
 
+    /**
+     * --------------------------------------------------------
+     * 这个 SpaceCtx.Provider 就是整个 Atom 双向绑定的精髓了
+     * --------------------------------------------------------
+     */
     return (
       <SpaceCtx.Provider value={nextCtx}>
         {children}
       </SpaceCtx.Provider>
     );
   }
-
 
   render() {
     return (
@@ -161,7 +192,7 @@ class Space extends PureComponent {
 
 const pass = v => v;
 
-const handlePull = (pull) => {
+const handlePull = (pull, vm) => {
   switch (true) {
     case isType(pull, 'Array'):
       return [pull[0] || 'value', pull[1] || pass];
@@ -171,12 +202,18 @@ const handlePull = (pull) => {
       return ['value', pull];
     case pull:
       return ['value', pass];
+    // 快捷方式, vm="path" === v="path" pull
+    case !!vm:
+      return ['value', pass];
+    // 主要是为了防止下方结构报错
+    case pull === undefined:
+      return [];
     default:
       throw new Error('[Atom] unsupport [pull] param type');
   }
 };
 
-const handlePush = (push) => {
+const handlePush = (push, vm) => {
   switch (true) {
     case isType(push, 'Array'):
       return [push[0] || 'onChange', push[1] || pass];
@@ -186,17 +223,15 @@ const handlePush = (push) => {
       return ['onChange', push];
     case push:
       return ['onChange', pass];
-    case isType(push, 'Undefined'):
+    // 快捷方式, vm="path" === v="path" pull
+    case !!vm:
+      return ['onChange', pass];
+    // 主要是为了防止下方结构报错
+    case push === undefined:
       return [];
     default:
       throw new Error('[Atom] unsupport [push] param type');
   }
-};
-
-const pathResolve = (space, field) => {
-  const spaceArr = Array.isArray(space) ? space : [space];
-  const fieldArr = Array.isArray(field) ? field : [field];
-  return [...spaceArr, ...fieldArr];
 };
 
 const getDraft = v => (isDraft(v)
@@ -214,31 +249,44 @@ const getDraft = v => (isDraft(v)
 class Atom extends PureComponent {
   renderAtom = (ctx) => {
     const {
-      v, pull, push, children,
+      v, vm, pull, push, children,
     } = this.props;
     const { space, store, put } = ctx;
     if (!v && v !== 0) throw new Error('[Atom] must have a [v] prop.');
+    if (v && vm) throw new Error('[Atom] [v] and [vm] 属性 不能共存.');
+    const bind = v || vm;
+    /**
+     * ------------------------------------------------------------
+     * 将 path 解析成数组, 添加 v="/" 语法糖
+     * ------------------------------------------------------------
+     */
+    const path = bind === '/' ? [space] : [space, ..._castPath(bind)];
 
-    const path = v === '/' ? space : pathResolve(space, v);
+    const [pullPath, pullSelector] = handlePull(pull, vm);
+    const [pushEventName, pushFilter] = handlePush(push, vm);
 
-    const [pullPath, pullSelector] = handlePull(pull);
-    const [pushEventName, pushFilter] = handlePush(push);
-
+    // 获取对应对应的值
     const value = pullSelector(_.get(store, path), _.get(store, space));
+    // 草稿化
     const draftV = getDraft(value);
 
     let onChange;
 
     if (push) {
       onChange = (cv) => {
-        const next = pushFilter(cv, draftV, getDraft(_.get(store, space)));
         put((ctxDraft) => {
-          const n = isDraft(next) ? finishDraft(next) : next;
-          _.set(ctxDraft, path, n);
+          /**
+           * 同样的, pushFilter 在对象结构上不需要返回值, 但对于简单值这种类型, 返回了处理
+           * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
+           */
+          const next = pushFilter(cv, draftV, getDraft(_.get(ctxDraft, space)));
+          if (next) {
+            const n = isDraft(next) ? finishDraft(next) : next;
+            _.set(ctxDraft, path, n);
+          }
         });
       };
     }
-
 
     const childrenProps = {
       ...children.props,
@@ -265,120 +313,11 @@ class Atom extends PureComponent {
   }
 }
 
-/**
- * --------------------------------------------
- * AtomPipeHOC
- * --------------------------------------------
- * introduce your pipeHOC
- */
-const AtomPipeHOC = (Comp) => {
-  class AtomHOC extends PureComponent {
-    static displayName = `AtomHOC${Comp.displayName || Comp.name || ''}`;
-
-    static propTypes = {
-      forwardRef: PropTypes.oneOfType([
-        PropTypes.func,
-        // Element is just window.Element, this type for React.createRef()
-        PropTypes.shape({ current: PropTypes.instanceOf(Element) }),
-      ]),
-    };
-
-    static defaultProps = {
-      forwardRef: null,
-    }
-
-    renderAtom = (ctx) => {
-      const { v, pull, push } = this.props;
-      const { space, store, put } = ctx;
-      if (!v && v !== 0) throw new Error('[Atom] must have a [v] prop.');
-
-      const path = v === '/' ? space : pathResolve(space, v);
-
-      const [pullPath, pullSelector] = handlePull(pull);
-      const [pushEventName, pushFilter] = handlePush(push);
-
-      const value = pullSelector(_.get(store, path), _.get(store, space));
-      const draftV = getDraft(value);
-
-      let onChange;
-
-      if (push) {
-        onChange = (cv) => {
-          const next = pushFilter(cv, draftV, getDraft(_.get(store, space)));
-          put((ctxDraft) => {
-            const n = isDraft(next) ? finishDraft(next) : next;
-            _.set(ctxDraft, path, n);
-          });
-        };
-      }
-
-
-      const childrenProps = {
-        ...this.props,
-        [pullPath]: draftV,
-      };
-
-      if (push) {
-        childrenProps[pushEventName] = onChange;
-      }
-
-      const nextProps = {
-        ...childrenProps,
-        ref: this.props.forwardRef,
-      };
-      return <Comp {...nextProps} />;
-    }
-
-    render() {
-      return (
-        <SpaceCtx.Consumer>
-          {this.renderAtom}
-        </SpaceCtx.Consumer>
-      );
-    }
-  }
-
-  hoistNonReactStatics(AtomHOC, Comp);
-  return forwardRef((props, ref) => <AtomHOC {...props} forwardRef={ref} />);
-};
-
-/**
- * @param who required. type: String;
- * @param when required. type: (type, props) => boolean | any;
- * @param how required. type: (Comp: ReactElement) => ReactElement;
- * @param why required. type: (e) => void;
- * @param ph type: [pH, key];
- *
- */
-
-/**
- * --------------------------------------------
- * pipe
- * --------------------------------------------
- * introduce your pipe
- */
-const AtomPipe = piper({
-  who: 'atom', // name for pipe
-  when: (type, props) => props.atom, // condition to use the pipe
-  how: AtomPipeHOC, // the HOC for this pipe, means how to deal with it
-  why: (e) => { // a callback will be call when error occur.
-    console.error('[AtomPipeHOC] error: ');
-    console.dir(e);
-  },
-  // pH: means sort weight, just like pH, the lower pH value, the heighter sort weight;
-  // key: pependent key name in JSX, which will be sort by write order;
-  ph: [7, ''],
-});
-
-/**
- * ------------------------------------------------------------
- * exports
- * ------------------------------------------------------------
- */
 
 export {
   SpaceProvider,
   Space,
   Atom,
-  AtomPipe,
+  action,
+  useSpace,
 };
