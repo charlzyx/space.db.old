@@ -1,11 +1,13 @@
-import { action } from '../../pkg/space';
+import { discover } from '../../pkg/space';
 import { TodoList } from '../namespace';
 
-action(TodoList, data => ({
-  addTodo: (todo) => {
+const space = discover(TodoList);
+
+export default {
+  addTodo: todo => space.put((data) => {
     data.todos.push(todo);
-  },
-  toggleTodo: (todo) => {
+  }),
+  toggleTodo: todo => space.put((data) => {
     const { todos } = data;
     const len = todos.length;
     for (let i = 0; i <= len; i++) { // eslint-disable-line
@@ -14,8 +16,8 @@ action(TodoList, data => ({
         return;
       }
     }
-  },
-  removeTodo: (todo) => {
+  }),
+  removeTodo: todo => space.put((data) => {
     const { todos } = data;
     const len = todos.length;
     for (let i = 0; i <= len; i++) { // eslint-disable-line
@@ -24,8 +26,8 @@ action(TodoList, data => ({
         return;
       }
     }
-  },
-  setFilter: (filter) => {
+  }),
+  setFilter: filter => space.put((data) => {
     data.filter = filter;
-  },
-}));
+  }),
+};

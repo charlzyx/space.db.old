@@ -3,16 +3,11 @@ import React, { PureComponent } from 'react';
 import {
   PageHeader, Divider,
 } from 'antd';
-import { Space } from 'space';
+import { Space, discover, Atom } from 'space';
+import { TodoList as TodoSpace } from '../namespace';
+import TodoData from './data';
+import actions from './actions';
 import './todo.less';
-
-/**
- * ------------------------------------------------------------
- * Symbol path in store
- * ------------------------------------------------------------
- */
-const spaceSymbol = Symbol('data');
-
 
 /**
  * ------------------------------------------------------------
@@ -79,79 +74,61 @@ const TodoList = (props) => {
 
 /**
  * ------------------------------------------------------------
+ * 不要解构!!!不要解构!!!, 只能在最后使用之前结构, Support TODO
+ * ------------------------------------------------------------
+ */
+const space = discover(TodoSpace);
+
+/**
+ * ------------------------------------------------------------
  * Todos App
  * ------------------------------------------------------------
  */
 class Todos extends PureComponent {
-  /**
-   * old school
-   */
-  state = {
-    next: '',
-    todos: [],
-  }
-
-  onKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      const { todos, next } = this.state;
-      this.setState({
-        todos: [...todos, { todo: next, done: false, key: +new Date() }],
-        next: '',
-      });
-    }
-  }
-
-  /**
-   * ------------------------------------------------------------
-   * putData 其实就是一个 immer 的 produce 的一层封装, 语法都是一样的
-   * ------------------------------------------------------------
-   */
-  setPut = (put) => {
-    this.putData = put;
-  };
-
-
   onNextKeyDown = (e) => {
+    const { data, put } = space;
     if (e.key === 'Enter') {
-      this.putData((data) => {
-        const { todos, next } = data;
-        if (!data.next) return;
-        todos.push({
+      // 比如, 在这解构是可以的
+      const { todos, next } = data;
+      if (next) {
+        const nextTodo = {
           todo: next,
           done: false,
           key: +new Date(),
+        };
+        actions.addTodo(nextTodo);
+        space.put((copy) => {
+          copy.next = '';
         });
-        data.next = '';
-      });
+      }
     }
   }
 
   todoKiller = (todo) => {
     if (!todo) return;
-    this.putData((data) => {
-      const { todos } = data;
-      const index = todos.findIndex(td => td.key === todo.key);
-      todos.splice(index, 1);
-    });
+    const { data, put } = space;
+    actions.removeTodo(todo);
   }
 
   toggleTodo = (todo) => {
     if (!todo) return;
-    this.putData((data) => {
-      const { todos } = data;
-      const index = todos.findIndex(td => td.key === todo.key);
-      todos[index].done = !todos[index].done;
-    });
+    actions.toggleTodo(todo);
   }
 
+  onClickFilter = (filter) => {
+    space.put((copy) => {
+      copy.filter = filter;
+    });
+    // or
+    // actions.setFilter(filter);
+  }
 
   /**
    * ------------------------------------------------------------
    * 一个典型的 pullSelector
    * 第一个参数是 Atom[v] 指定的字段
-   * 第二个参数 当前所在 Space 所对应的子 store
-   * 注意! 不要在这里修改space
-   * dev 环境有报错
+   * 第二个参数 当前所在 SpaceStore
+   * 注意! 不要在这里修改 spaceStore, dev 环境有报错
    * ------------------------------------------------------------
    */
   todosSelector = (todos, spaceStore) => {
@@ -179,24 +156,26 @@ class Todos extends PureComponent {
         <Divider />
         <div>
           <div>
-            <h2>性能对比: no Space</h2>
-            <input type="text" onKeyDown={this.onKeyDown} value={state.next} onChange={e => this.setState({ next: e.target.value })} />
-            <TodoList list={state.todos} />
-          </div>
-          <div>
-            <h2>性能对比: Space</h2>
             <Space
-              space={spaceSymbol}
-              init={{ todos: [], filter: 'all', next: '' }}
-            // 注意这里的 put
-              put={this.setPut}
+              space={TodoSpace}
+              init={TodoData}
             >
-              <input atom v="next" pull push={e2v} type="text" placeholder="input here..." onKeyDown={this.onNextKeyDown} />
-              <TodoList atom v="todos" pull={['list', this.todosSelector]} toggleTodo={this.toggleTodo} todoKiller={this.todoKiller} />
+              <Atom vm="next" push={e2v} type="text">
+                <input type="text" placeholder="input here..." onKeyDown={this.onNextKeyDown} />
+              </Atom>
+              <Atom v="todos" pull={['list', this.todosSelector]}>
+                <TodoList toggleTodo={this.toggleTodo} todoKiller={this.todoKiller} />
+              </Atom>
               <div>
-                <button atom type="button" v="filter" pull push={['onClick', () => 'all']}>All</button>
-                <button atom type="button" v="filter" pull push={['onClick', () => 'todo']}>Todos</button>
-                <button atom type="button" v="filter" pull push={['onClick', () => 'done']}>Dones</button>
+                <Atom v="filter" pull>
+                  <button type="button" onClick={() => this.onClickFilter('all')}>All</button>
+                </Atom>
+                <Atom v="filter" pull>
+                  <button type="button" onClick={() => this.onClickFilter('todo')}>todos</button>
+                </Atom>
+                <Atom v="filter" pull>
+                  <button type="button" onClick={() => this.onClickFilter('done')}>Dones</button>
+                </Atom>
               </div>
             </Space>
           </div>

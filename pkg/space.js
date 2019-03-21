@@ -1,37 +1,54 @@
-/* eslint-disable react/prop-types */
 /**
+ * overview
  * ------------------------------------------------------------
- * api 概览
- * ------------------------------------------------------------
+ *
  * - SpaceProvider
+ *   - chidren: element
+ * ------------------------------------------------------------
  *
  * - Space
- *   1. space Symbol(comp) | namespace
- *   2. init Object | Array
- *   3. live
- *   4. kill
+ *   - space: string | Symbol
+ *   - init: Object
+ *   - alive: TODO
+ *   - kill: TODO
+ * ------------------------------------------------------------
  *
  * - Atom
- *   1. v
- *   2. vm
- *   3. pull true | string | selector | [string, selector]
- *   4. push true | string | filter | [string, filter]
+ *   - v: string | array
+ *   - vm: string | array
+ *   - pull: true | string | function | [string, function]
+ *   - push: true | string | function | [string, function]
+ *   - children: element | function
+ *   - render: function
+ * ------------------------------------------------------------
  *
- * - action
- *   (namespace, actions) => void;
+ * - Atomic
+ *  (Comp) => AtomBox
+ *   - AtomBox
+ *     - v: string | array
+ *     - vm: string | array
+ *     - pull: true | string | function | [string, function]
+ *     - push: true | string | function | [string, function]*
  *
- * - useSpace
- *   (namespace) => [data, put, actions]
+ * ------------------------------------------------------------
+ *
+ * - discover
+ *  (space) => { data, put }
+ * ------------------------------------------------------------
+ *
+ * - log
+ *  (maybeDraft, msg) => console.log
+ * ------------------------------------------------------------
  *
  */
 
 import React, {
-  //  forwardRef,
+  forwardRef,
   createContext,
   PureComponent,
 } from 'react';
-// import PropTypes from 'prop-types';
-// import hoistNonReactStatics from 'hoist-non-react-statics';
+import PropTypes from 'prop-types';
+import hoistNonReactStatics from 'hoist-non-react-statics';
 import _ from 'lodash';
 import _castPath from 'lodash/_castPath';
 import { useImmer } from 'use-immer';
@@ -39,7 +56,7 @@ import {
   setAutoFreeze,
   isDraft,
   isDraftable,
-  // original,
+  original,
   createDraft,
   finishDraft,
 } from 'immer';
@@ -65,29 +82,41 @@ const isType = (o, t) => Object.prototype.toString.call(o) === `[object ${t}]`;
 const SpaceCtx = createContext({});
 
 /**
+ * wormhole
  * ------------------------------------------------------------
- * The bridge, in space named wormhole
+ * privated bridge, in space named wormhole
  * ------------------------------------------------------------
  */
 const wormhole = {
-  store: null,
-  put: null,
-  actions: null,
-  puts: null,
+  store: {},
+  put: {},
+  puts: {},
 };
 
-const action = (namespace, differ) => {
-  const { actions, put, store } = wormhole;
-  const spaceStore = _.get(namespace, store);
-  // FIXME:
-  actions[namespace] = put(spaceStore, differ);
+/**
+ * dicover
+ * ------------------------------------------------------------
+ * (space) => { data, put }
+ * ------------------------------------------------------------
+ * The Salute To Discovery
+ */
+const discover = (space) => {
+  const spacePair = {};
+  Object.defineProperty(spacePair, 'data', {
+    get() { return _.get(wormhole, ['store', space]); },
+  });
+  Object.defineProperty(spacePair, 'put', {
+    get() { return _.get(wormhole, ['puts', space]); },
+  });
+  return spacePair;
 };
 
-const useSpace = (namespace) => {
-  const { store, puts, actions } = wormhole;
-  return [store, puts, actions].map(i => _.get(i, namespace));
-};
-
+/**
+ * SpaceProvider
+ * ------------------------------------------------------------
+ * children: element
+ * ------------------------------------------------------------
+ */
 const SpaceProvider = (props) => {
   const [store, put] = useImmer({});
   const ctx = {
@@ -104,13 +133,37 @@ const SpaceProvider = (props) => {
   );
 };
 
+SpaceProvider.propTypes = {
+  children: PropTypes.oneOfType([PropTypes.node, PropTypes.func]),
+};
+
+SpaceProvider.defaultProps = {
+  children: null,
+};
+
 
 /**
- * ------------------------------------------------------------
  * Space
+ * ------------------------------------------------------------
+ * - space: string | Symbol
+ * - init: Object
+ * - alive: TODO
+ * - kill: TODO
  * ------------------------------------------------------------
  */
 class Space extends PureComponent {
+  static propTypes = {
+    children: PropTypes.node,
+    space: PropTypes.oneOf([PropTypes.string, PropTypes.instanceOf(Symbol)]),
+    init: PropTypes.object, // eslint-disable-line
+  };
+
+  static defaultProps = {
+    children: null,
+    space: null,
+    init: null,
+  };
+
   componentWillUnmount() {
     // TODO: alive | kill | auto
   }
@@ -120,6 +173,7 @@ class Space extends PureComponent {
       space, children, init,
     } = this.props;
     const { store, put } = ctx;
+    if (!space) throw new Error('[Space] must has an space');
 
     const shouldInit = init && _.get(store, space) === undefined;
 
@@ -234,25 +288,57 @@ const handlePush = (push, vm) => {
   }
 };
 
-const getDraft = v => (isDraft(v)
+const draftify = v => (isDraft(v)
   ? v
   : isDraftable(v)
     ? createDraft(v)
     : v);
 
 /**
- * ------------------------------------------------------------
  * Atom
+ * ------------------------------------------------------------
+ * - v: string | array
+ * - vm: string | array
+ * - pull: true | string | function | [string, function]
+ * - push: true | string | function | [string, function]
+ * - children: element | function
+ * - render: function
  * ------------------------------------------------------------
  */
 
 class Atom extends PureComponent {
+  static propTypes = {
+    v: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+    vm: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+    pull: PropTypes.oneOfType([
+      PropTypes.string,
+      PropTypes.func,
+      PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
+    ]),
+    push: PropTypes.oneOfType([
+      PropTypes.string,
+      PropTypes.func,
+      PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
+    ]),
+    children: PropTypes.oneOfType([PropTypes.node, PropTypes.func]),
+    render: PropTypes.func,
+  };
+
+  static defaultProps = {
+    v: null,
+    vm: null,
+    pull: null,
+    push: null,
+    children: null,
+    render: null,
+  }
+
   renderAtom = (ctx) => {
     const {
-      v, vm, pull, push, children,
+      v, vm, pull, push, children, render,
     } = this.props;
     const { space, store, put } = ctx;
-    if (!v && v !== 0) throw new Error('[Atom] must have a [v] prop.');
+    if (!v && v !== 0 && !vm && vm !== 0) throw new Error('[Atom] must have a [v] prop.');
     if (v && vm) throw new Error('[Atom] [v] and [vm] 属性 不能共存.');
     const bind = v || vm;
     /**
@@ -268,18 +354,22 @@ class Atom extends PureComponent {
     // 获取对应对应的值
     const value = pullSelector(_.get(store, path), _.get(store, space));
     // 草稿化
-    const draftV = getDraft(value);
+    const draftV = draftify(value);
 
     let onChange;
 
     if (push) {
       onChange = (cv) => {
+        /**
+         * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
+         * 受限于 [SyntheticEvent](https://reactjs.org/docs/events.html) 限制,
+         *  SyntheticEvent 不能够异步调用
+         * 因此不同于 put, 必须要返回一个值, 不过, 第二个参数 olgValue, 第三个参数 currentSpaceData
+         * 都被包装成了 draft 所以也可以通过简单的对象修改再 return 出来即可
+         */
+        const next = pushFilter(cv, draftV, draftify(_.get(store, space)));
+
         put((ctxDraft) => {
-          /**
-           * 同样的, pushFilter 在对象结构上不需要返回值, 但对于简单值这种类型, 返回了处理
-           * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
-           */
-          const next = pushFilter(cv, draftV, getDraft(_.get(ctxDraft, space)));
           if (next) {
             const n = isDraft(next) ? finishDraft(next) : next;
             _.set(ctxDraft, path, n);
@@ -297,9 +387,15 @@ class Atom extends PureComponent {
       childrenProps[pushEventName] = onChange;
     }
 
+    // Render Props support
     if (isType(children, 'Function')) {
       return children(childrenProps);
     }
+
+    if (isType(render, 'Function')) {
+      return render(childrenProps);
+    }
+
 
     return React.cloneElement(children, childrenProps);
   }
@@ -313,11 +409,139 @@ class Atom extends PureComponent {
   }
 }
 
+/**
+ * Atomic
+ * ------------------------------------------------------------
+ * (Comp) => AtomBox
+ * - AtomBox
+ *   - v: string | array
+ *   - vm: string | array
+ *   - pull: true | string | function | [string, function]
+ *   - push: true | string | function | [string, function]
+ * ------------------------------------------------------------
+ */
+
+const Atomic = (Comp) => {
+  class AtomBox extends PureComponent {
+    static displayName = `AtomBoxed${Comp.displayName || Comp.name || ''}`;
+
+    static propTypes = {
+      forwardRef: PropTypes.oneOfType([
+        PropTypes.func,
+        // Element is just window.Element, this type for React.createRef()
+        PropTypes.shape({ current: PropTypes.instanceOf(Element) }),
+      ]),
+      v: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+      vm: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+      pull: PropTypes.oneOfType([
+        PropTypes.string,
+        PropTypes.func,
+        PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
+      ]),
+      push: PropTypes.oneOfType([
+        PropTypes.string,
+        PropTypes.func,
+        PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
+      ]),
+    };
+
+    static defaultProps = {
+      forwardRef: null,
+      v: null,
+      vm: null,
+      pull: null,
+      push: null,
+    }
+
+    renderAtom = (ctx) => {
+      const {
+        v, vm, pull, push,
+      } = this.props;
+      const { space, store, put } = ctx;
+      if (!v && v !== 0 && !vm && vm !== 0) throw new Error('[Atom] must have a [v] prop.');
+      if (v && vm) throw new Error('[Atom] [v] and [vm] 属性 不能共存.');
+      const bind = v || vm;
+      /**
+     * ------------------------------------------------------------
+     * 将 path 解析成数组, 添加 v="/" 语法糖
+     * ------------------------------------------------------------
+     */
+      const path = bind === '/' ? [space] : [space, ..._castPath(bind)];
+
+      const [pullPath, pullSelector] = handlePull(pull, vm);
+      const [pushEventName, pushFilter] = handlePush(push, vm);
+
+      // 获取对应对应的值
+      const value = pullSelector(_.get(store, path), _.get(store, space));
+      // 草稿化
+      const draftV = draftify(value);
+
+      let onChange;
+
+      if (push) {
+        onChange = (cv) => {
+          if (typeof this.props[pushEventName] === 'function') {
+            this.props[pushEventName](cv);
+          }
+          /**
+           * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
+           * 受限于 [SyntheticEvent](https://reactjs.org/docs/events.html) 限制,
+           *  SyntheticEvent 不能够异步调用
+           * 因此不同于 put, 必须要返回一个值, 不过, 第二个参数 olgValue, 第三个参数 currentSpaceData
+           * 都被包装成了 draft 所以也可以通过简单的对象修改再 return 出来即可
+           */
+          const next = pushFilter(cv, draftV, draftify(_.get(store, space)));
+
+          put((ctxDraft) => {
+            if (next) {
+              const n = isDraft(next) ? finishDraft(next) : next;
+              _.set(ctxDraft, path, n);
+            }
+          });
+        };
+      }
+
+      const childrenProps = {
+        ...this.props,
+        [pullPath]: draftV,
+      };
+
+      if (push) {
+        childrenProps[pushEventName] = onChange;
+      }
+
+      return <Comp {...childrenProps} />;
+    }
+
+    render() {
+      return (
+        <SpaceCtx.Consumer>
+          {this.renderAtom}
+        </SpaceCtx.Consumer>
+      );
+    }
+  }
+
+  hoistNonReactStatics(AtomBox, Comp);
+  return forwardRef((props, ref) => <AtomBox {...props} forwardRef={ref} />);
+};
+
+const log = (o, msg) => {
+  if (isDraft(o)) {
+    console.log(msg);
+    console.dir(original(o));
+  } else {
+    console.log(msg);
+    console.dir(o);
+  }
+};
+
 
 export {
   SpaceProvider,
   Space,
   Atom,
-  action,
-  useSpace,
+  Atomic,
+  discover,
+  log,
 };
