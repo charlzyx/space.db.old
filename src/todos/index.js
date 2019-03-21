@@ -1,13 +1,12 @@
-/* eslint-disable react/prop-types, no-unused-vars */
+/* eslint-disable react/prop-types */
 import React, { PureComponent } from 'react';
 import {
   PageHeader, Divider,
 } from 'antd';
 import {
-  Space, discover, Atom, Atomic,
+  Space, discover, Atom,
 } from 'space';
 import { TodoList as TodoSpace } from '../namespace';
-import TodoData from './data';
 import actions from './actions';
 import './todo.less';
 
@@ -23,7 +22,7 @@ const e2v = e => e.target.value;
  * Show own props keys
  * ------------------------------------------------------------
  */
-const Show = props => <pre>{JSON.stringify(Object.keys(props), null, 2)}</pre>;
+// const Show = props => <pre>{JSON.stringify(Object.keys(props), null, 2)}</pre>;
 
 /**
  * ------------------------------------------------------------
@@ -89,10 +88,10 @@ const space = discover(TodoSpace);
  */
 class Todos extends PureComponent {
   onNextKeyDown = (e) => {
-    const { data, put } = space;
+    const { data } = space;
     if (e.key === 'Enter') {
       // 比如, 在这解构是可以的
-      const { todos, next } = data;
+      const { next } = data;
       if (next) {
         const nextTodo = {
           todo: next,
@@ -109,7 +108,6 @@ class Todos extends PureComponent {
 
   todoKiller = (todo) => {
     if (!todo) return;
-    const { data, put } = space;
     actions.removeTodo(todo);
   }
 
@@ -149,7 +147,6 @@ class Todos extends PureComponent {
   }
 
   render() {
-    const { state } = this;
     return (
       <div>
         <PageHeader
