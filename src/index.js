@@ -7,7 +7,22 @@ import 'moment/locale/zh-cn';
 import 'antd/dist/antd.css';
 import 'normalize.css/normalize.css';
 import './app.less';
+import ppph, { piper } from 'ppph';
 import App from './app';
+import { Atomic } from '../pkg/space';
+
+const atomic = piper({
+  who: 'atomic',
+  when: (type, props) => props.atom,
+  how: Atomic,
+  why: (e) => {
+    console.log('Atomic Error\n', e);
+  },
+  ph: [-7, 'atom'],
+});
+
+ppph.use(atomic);
+ppph.inject();
 
 moment.locale('zh-cn');
 

@@ -260,7 +260,7 @@ const handlePull = (pull, vm) => {
     case !!vm:
       return ['value', pass];
     // 主要是为了防止下方结构报错
-    case pull === undefined:
+    case pull === undefined || pull === null:
       return [];
     default:
       throw new Error('[Atom] unsupport [pull] param type');
@@ -281,7 +281,7 @@ const handlePush = (push, vm) => {
     case !!vm:
       return ['onChange', pass];
     // 主要是为了防止下方结构报错
-    case push === undefined:
+    case push === undefined || push === null:
       return [];
     default:
       throw new Error('[Atom] unsupport [push] param type');
@@ -358,7 +358,7 @@ class Atom extends PureComponent {
 
     let onChange;
 
-    if (push) {
+    if (push || vm) {
       onChange = (cv) => {
         /**
          * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
@@ -383,7 +383,7 @@ class Atom extends PureComponent {
       [pullPath]: draftV,
     };
 
-    if (push) {
+    if (push || vm) {
       childrenProps[pushEventName] = onChange;
     }
 
@@ -395,7 +395,6 @@ class Atom extends PureComponent {
     if (isType(render, 'Function')) {
       return render(childrenProps);
     }
-
 
     return React.cloneElement(children, childrenProps);
   }

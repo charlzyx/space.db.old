@@ -3,7 +3,9 @@ import React, { PureComponent } from 'react';
 import {
   PageHeader, Divider,
 } from 'antd';
-import { Space, discover, Atom } from 'space';
+import {
+  Space, discover, Atom, Atomic,
+} from 'space';
 import { TodoList as TodoSpace } from '../namespace';
 import TodoData from './data';
 import actions from './actions';
@@ -42,6 +44,7 @@ const TodoItem = props => (
     <button type="button" onClick={props.onRemove}> remove </button>
   </li>
 );
+
 /**
  * ------------------------------------------------------------
  * TodoList
@@ -158,17 +161,25 @@ class Todos extends PureComponent {
           <div>
             <Space
               space={TodoSpace}
-              init={TodoData}
+              init={{
+                todos: [],
+                next: '',
+                filter: 'all',
+              }}
             >
               <Atom vm="next" push={e2v} type="text">
-                <input type="text" placeholder="input here..." onKeyDown={this.onNextKeyDown} />
+                <input
+                  type="text"
+                  placeholder="input here..."
+                  onKeyDown={this.onNextKeyDown}
+                />
               </Atom>
               <Atom v="todos" pull={['list', this.todosSelector]}>
                 <TodoList toggleTodo={this.toggleTodo} todoKiller={this.todoKiller} />
               </Atom>
               <div>
-                <Atom v="filter" pull>
-                  <button type="button" onClick={() => this.onClickFilter('all')}>All</button>
+                <Atom v="filter" pull push={['onClick', () => 'all']}>
+                  <button type="button">All</button>
                 </Atom>
                 <Atom v="filter" pull>
                   <button type="button" onClick={() => this.onClickFilter('todo')}>todos</button>
