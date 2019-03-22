@@ -1,12 +1,53 @@
 /* eslint-disable react/prop-types */
-import React, { Component } from 'react';
+import React, { Component, useState } from 'react';
 import {
   Menu, Row, Col,
 } from 'antd';
-import { SpaceProvider, Space, Atom } from 'space';
-import { Menus } from '@namespace';
-import Todos from './AtomTodos';
-import Form from './AtomForm';
+import { SpaceProvider, Atom, discover } from 'space';
+import { eva } from '@helper';
+
+
+const [got, put, Space] = discover();
+
+const UseApp = () => (
+  <div>
+    <Space
+      onChange={v => console.log('onchange', v)}
+      value={{ query: { name: '233', age: 14 } }}
+    >
+      <Atom vm="query.name" put={eva}>
+        <input
+          type="text"
+          onChange={() => {
+            // setTimeout(() => {
+            //   console.log('onInput', got());
+            // });
+          }}
+        />
+      </Atom>
+      <button
+        type="button"
+        onClick={() => {
+          put((data) => {
+            data.query.name = +new Date();
+          });
+          console.log('no delay', got());
+          got.next().then((next) => {
+            console.log('after wait', next);
+          });
+          got.next((next) => {
+            console.log('cb next', next);
+          });
+          setTimeout(() => {
+            console.log('delay', got());
+          });
+        }}
+      >
+        click me
+      </button>
+    </Space>
+  </div>
+);
 
 
 class App extends Component {
@@ -14,53 +55,13 @@ class App extends Component {
 
   render() {
     return (
-      <Space
-        space={Menus}
-        init={{
-          selectedKeys: ['form'],
-        }}
-      >
-        <Row>
-          <Col span={6}>
-            <Atom v="selectedKeys" pull="selectedKeys" push={['onSelect', this.onSelect]}>
-              <Menu
-                // selectedKeys={['form']}
-                theme="dark"
-                mode="inline"
-                style={{
-                  height: '100vh',
-                  overflowY: 'auto',
-                }}
-              >
-                <Menu.Item key="todos">
-                  <span>土豆丝</span>
-                </Menu.Item>
-                <Menu.Item key="form">
-                  <span>Form</span>
-                </Menu.Item>
-              </Menu>
-            </Atom>
-          </Col>
-          <Col span={18}>
-            <Atom v="selectedKeys" pull={keys => keys[0]}>
-              {({ value }) => {
-                switch (value) {
-                  case 'todos':
-                    return <Todos />;
-                  case 'form':
-                    return <Form />;
-                  default:
-                    return <Todos />;
-                }
-              }}
-            </Atom>
-
-          </Col>
-        </Row>
-      </Space>
+      <div>
+        App
+      </div>
     );
   }
 }
 
-const Galaxy = () => <SpaceProvider><App /></SpaceProvider>;
+// const Galaxy = () => <SpaceProvider><App /></SpaceProvider>;
+const Galaxy = () => <SpaceProvider><UseApp /></SpaceProvider>;
 export default Galaxy;

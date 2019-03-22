@@ -11,18 +11,27 @@
  *   - chidren: element
  * ------------------------------------------------------------
  *
+ * #private
  * - Space
- *   - space: string | Symbol
- *   - init: Object
- *   - alive: TODO
- *   - kill: TODO
+ *   - space: privateId
+ *   - value: Object | Array
+ *   - onChange: Function
  * ------------------------------------------------------------
+ *
+ * - discover
+ * () => [ got, put, Space ]
+ *  - got() => store;
+ *  - got.next() => Promise<store>
+ *  - got.next(cb); cb(store)
+ *  - put(differ) => void
+ *  - Space: (props) => <Space {...props} space={privateId++} >
+ * -----------------------------------------------------------
  *
  * - Atom
  *   - v: string | array
  *   - vm: string | array
- *   - pull: true | string | function | [string, function]
- *   - push: true | string | function | [string, function]
+ *   - got: true | string | function | [string, function]
+ *   - put: true | string | function | [string, function]
  *   - children: element | function
  *   - render: function
  * ------------------------------------------------------------
@@ -32,18 +41,9 @@
  *   - AtomBox
  *     - v: string | array
  *     - vm: string | array
- *     - pull: true | string | function | [string, function]
- *     - push: true | string | function | [string, function]*
+ *     - got: true | string | function | [string, function]
+ *     - put: true | string | function | [string, function]*
  *
  * ------------------------------------------------------------
- *
- * - discover
- *  (space) => { data, put }
- * ------------------------------------------------------------
- *
- * - log
- *  (maybeDraft, msg) => console.log
- * ------------------------------------------------------------
- *
  */
 ```

@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 /**
  * overview
  * ------------------------------------------------------------
@@ -7,17 +8,20 @@
  * ------------------------------------------------------------
  *
  * - Space
- *   - space: string | Symbol
- *   - init: Object
- *   - alive: TODO
- *   - kill: TODO
+ *   - space: Symbol
+ *   - value: Object | Array
+ *   - onChange: Function
  * ------------------------------------------------------------
+ *
+ * - discover
+ * () => [ got, put, Space ]
+ * -----------------------------------------------------------
  *
  * - Atom
  *   - v: string | array
  *   - vm: string | array
- *   - pull: true | string | function | [string, function]
- *   - push: true | string | function | [string, function]
+ *   - got: true | string | function | [string, function]
+ *   - put: true | string | function | [string, function]
  *   - children: element | function
  *   - render: function
  * ------------------------------------------------------------
@@ -27,28 +31,20 @@
  *   - AtomBox
  *     - v: string | array
  *     - vm: string | array
- *     - pull: true | string | function | [string, function]
- *     - push: true | string | function | [string, function]*
+ *     - got: true | string | function | [string, function]
+ *     - put: true | string | function | [string, function]*
  *
  * ------------------------------------------------------------
- *
- * - discover
- *  (space) => { data, put }
- * ------------------------------------------------------------
- *
- * - log
- *  (maybeDraft, msg) => console.log
- * ------------------------------------------------------------
- *
  */
 
 import React, {
-  forwardRef,
+  // forwardRef,
   createContext,
   PureComponent,
+  // useState,
 } from 'react';
 import PropTypes from 'prop-types';
-import hoistNonReactStatics from 'hoist-non-react-statics';
+// import hoistNonReactStatics from 'hoist-non-react-statics';
 import _ from 'lodash';
 import _castPath from 'lodash/_castPath';
 import { useImmer } from 'use-immer';
@@ -59,6 +55,7 @@ import {
   original,
   createDraft,
   finishDraft,
+  // finishDraft,
 } from 'immer';
 
 setAutoFreeze(true);
@@ -82,33 +79,20 @@ const isType = (o, t) => Object.prototype.toString.call(o) === `[object ${t}]`;
 const SpaceCtx = createContext({});
 
 /**
- * wormhole
+ * _wormhole
  * ------------------------------------------------------------
  * privated bridge, in space named wormhole
  * ------------------------------------------------------------
  */
-const wormhole = {
-  store: {},
-  put: {},
+const _wormhole = {
+  gots: {},
   puts: {},
-};
-
-/**
- * dicover
- * ------------------------------------------------------------
- * (space) => { data, put }
- * ------------------------------------------------------------
- * The Salute To Discovery
- */
-const discover = (space) => {
-  const spacePair = {};
-  Object.defineProperty(spacePair, 'data', {
-    get() { return _.get(wormhole, ['store', space]); },
-  });
-  Object.defineProperty(spacePair, 'put', {
-    get() { return _.get(wormhole, ['puts', space]); },
-  });
-  return spacePair;
+  getGot(id) {
+    return this.gots[id];
+  },
+  getPut(id) {
+    return this.puts[id];
+  },
 };
 
 /**
@@ -123,8 +107,7 @@ const SpaceProvider = (props) => {
     store,
     put,
   };
-  wormhole.store = store;
-  wormhole.put = put;
+
   const { children } = props;
   return (
     <SpaceCtx.Provider value={ctx}>
@@ -141,88 +124,65 @@ SpaceProvider.defaultProps = {
   children: null,
 };
 
-
 /**
  * Space
  * ------------------------------------------------------------
- * - space: string | Symbol
- * - init: Object
- * - alive: TODO
- * - kill: TODO
+ *   - debug: String
+ *   - space: Symbol
+ *   - value: Object | Array
+ *   - onChange: Function
  * ------------------------------------------------------------
  */
-class Space extends PureComponent {
-  static propTypes = {
-    children: PropTypes.node,
-    space: PropTypes.oneOf([PropTypes.string, PropTypes.instanceOf(Symbol)]),
-    init: PropTypes.object, // eslint-disable-line
-  };
 
-  static defaultProps = {
-    children: null,
-    space: null,
-    init: null,
-  };
+
+const notify = (old, next, notice) => {
+  if (next !== undefined && !_.isEqual(old, next)) {
+    notice(next);
+  }
+};
+class Space extends PureComponent {
+  spaceKiller = null;
 
   componentWillUnmount() {
-    // TODO: alive | kill | auto
+    this.spaceKiller();
   }
 
   renderSpace = (ctx) => {
     const {
-      space, children, init,
+      space, children, value, onChange,
     } = this.props;
     const { store, put } = ctx;
-    if (!space) throw new Error('[Space] must has an space');
+    const spaceStore = _.get(store, space);
 
-    const shouldInit = init && _.get(store, space) === undefined;
-
-    const nextCtx = { ...ctx, space };
-
-    /**
-     * --------------------------------------------------------
-     * spacePut 没有透传下去是为了 Atom 里面更加灵活, 比如:
-     * path可以使用 '/' 指向 space
-     * --------------------------------------------------------
-     */
-    const spacePut = (differ) => {
-      put((ctxDraft) => {
-        const spaceStore = _.get(ctxDraft, [space]);
-        const maybeNext = differ(spaceStore);
-        // 并不期望有返回值, 跟 immer 是一样的, 但是如果真的返回了,
-        // 还是要处理
-        if (maybeNext !== undefined) {
-          _.set(ctxDraft, [space], maybeNext);
-        }
-      });
-    };
-
-    /**
-     * --------------------------------------------------------
-     * export put for this space
-     * --------------------------------------------------------
-     */
-    wormhole.puts[space] = spacePut;
-
-    if (shouldInit) {
-      /**
-       * --------------------------------------------------------
-       * 这个 set 是为了保证, 在子组件第一次渲染的时候
-       * 就能拿到自己设置的初始值
-       * BUG: _.set(nextCtx, ['store', space], init) 就是设置不成功
-       * --------------------------------------------------------
-       */
-      _.set(nextCtx, ['store'], { ...nextCtx.store, [space]: init });
-      put((ctxDraft) => {
-        _.set(ctxDraft, space, init);
+    if (!this.spaceKiller) {
+      this.spaceKiller = put((draftStore) => {
+        _.set(draftStore, space, undefined);
       });
     }
 
-    /**
-     * --------------------------------------------------------
-     * 这个 SpaceCtx.Provider 就是整个 Atom 双向绑定的精髓了
-     * --------------------------------------------------------
-     */
+    notify(value, spaceStore, onChange);
+
+    if (spaceStore === undefined) {
+      put((draftStore) => {
+        _.set(draftStore, space, value);
+      });
+    }
+
+
+    const spacePut = (differ) => {
+      put((draftStore) => {
+        differ(draftStore[space]);
+      });
+    };
+
+    _wormhole.gots[space] = spaceStore;
+    _wormhole.puts[space] = spacePut;
+
+    const nextCtx = {
+      store: spaceStore,
+      put: spacePut,
+    };
+
     return (
       <SpaceCtx.Provider value={nextCtx}>
         {children}
@@ -239,6 +199,35 @@ class Space extends PureComponent {
   }
 }
 
+
+/**
+ * dicover
+ * ------------------------------------------------------------
+ * (space) => { data, put, Space }
+ * ------------------------------------------------------------
+ * The Salute To Discovery
+ */
+
+let spaceId = 0;
+const discover = () => {
+  const id = `space_${spaceId++}`; // eslint-disable-line
+
+  const NASA = props => <Space {...props} space={id} />;
+  const got = () => _wormhole.getGot(id);
+  const put = differ => _wormhole.getPut(id)(differ);
+  got.next = cb => new Promise((resolve) => {
+    setTimeout(() => {
+      const get = got();
+      if (isType(cb, 'Function')) {
+        cb(get);
+      }
+      resolve(get);
+    });
+  });
+
+  return [got, put, NASA];
+};
+
 /**
  * ------------------------------------------------------------
  * Atom Helpers
@@ -247,45 +236,29 @@ class Space extends PureComponent {
 
 const pass = v => v;
 
-const handlePull = (pull, vm) => {
+const handleGot = (got) => {
   switch (true) {
-    case isType(pull, 'Array'):
-      return [pull[0] || 'value', pull[1] || pass];
-    case isType(pull, 'String'):
-      return [pull || 'value', pass];
-    case isType(pull, 'Function'):
-      return ['value', pull];
-    case pull:
-      return ['value', pass];
-    // 快捷方式, vm="path" === v="path" pull
-    case !!vm:
-      return ['value', pass];
-    // 主要是为了防止下方结构报错
-    case pull === undefined || pull === null:
-      return [];
+    case isType(got, 'Array'):
+      return [got[0] || 'value', got[1] || pass];
+    case isType(got, 'String'):
+      return [got || 'value', pass];
+    case isType(got, 'Function'):
+      return ['value', got];
     default:
-      throw new Error('[Atom] unsupport [pull] param type');
+      return ['value', pass];
   }
 };
 
-const handlePush = (push, vm) => {
+const handlePut = (put) => {
   switch (true) {
-    case isType(push, 'Array'):
-      return [push[0] || 'onChange', push[1] || pass];
-    case isType(push, 'String'):
-      return [push || 'onChange', pass];
-    case isType(push, 'Function'):
-      return ['onChange', push];
-    case push:
-      return ['onChange', pass];
-    // 快捷方式, vm="path" === v="path" pull
-    case !!vm:
-      return ['onChange', pass];
-    // 主要是为了防止下方结构报错
-    case push === undefined || push === null:
-      return [];
+    case isType(put, 'Array'):
+      return [put[0] || 'onChange', put[1] || pass];
+    case isType(put, 'String'):
+      return [put || 'onChange', pass];
+    case isType(put, 'Function'):
+      return ['onChange', put];
     default:
-      throw new Error('[Atom] unsupport [push] param type');
+      return ['onChange', pass];
   }
 };
 
@@ -298,105 +271,52 @@ const draftify = v => (isDraft(v)
 /**
  * Atom
  * ------------------------------------------------------------
- * - v: string | array
- * - vm: string | array
- * - pull: true | string | function | [string, function]
- * - push: true | string | function | [string, function]
- * - children: element | function
- * - render: function
  * ------------------------------------------------------------
  */
 
 class Atom extends PureComponent {
-  static propTypes = {
-    v: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
-    vm: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
-    pull: PropTypes.oneOfType([
-      PropTypes.string,
-      PropTypes.func,
-      PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
-    ]),
-    push: PropTypes.oneOfType([
-      PropTypes.string,
-      PropTypes.func,
-      PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
-    ]),
-    children: PropTypes.oneOfType([PropTypes.node, PropTypes.func]),
-    render: PropTypes.func,
-  };
-
-  static defaultProps = {
-    v: null,
-    vm: null,
-    pull: null,
-    push: null,
-    children: null,
-    render: null,
-  }
-
   renderAtom = (ctx) => {
     const {
-      v, vm, pull, push, children, render,
+      vm, got, put, render, children,
     } = this.props;
-    const { space, store, put } = ctx;
-    if (!v && v !== 0 && !vm && vm !== 0) throw new Error('[Atom] must have a [v] prop.');
-    if (v && vm) throw new Error('[Atom] [v] and [vm] 属性 不能共存.');
-    const bind = v || vm;
-    /**
-     * ------------------------------------------------------------
-     * 将 path 解析成数组, 添加 v="/" 语法糖
-     * ------------------------------------------------------------
-     */
-    const path = bind === '/' ? [space] : [space, ..._castPath(bind)];
+    const {
+      store, put: spacePut,
+    } = ctx;
 
-    const [pullPath, pullSelector] = handlePull(pull, vm);
-    const [pushEventName, pushFilter] = handlePush(push, vm);
+    // 'x.y' | ['x', 'y'] => ['x', 'y'];
+    const path = _castPath(vm);
 
-    // 获取对应对应的值
-    const value = pullSelector(_.get(store, path), _.get(store, space));
-    // 草稿化
-    const draftV = draftify(value);
+    const [gotPath, gotSelector] = handleGot(got);
+    const [putEventName, putChanger] = handlePut(put);
 
-    let onChange;
+    const draftV = draftify(gotSelector(_.get(store, path)));
 
-    if (push || vm) {
-      onChange = (cv) => {
-        /**
-         * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
-         * 受限于 [SyntheticEvent](https://reactjs.org/docs/events.html) 限制,
-         *  SyntheticEvent 不能够异步调用
-         * 因此不同于 put, 必须要返回一个值, 不过, 第二个参数 olgValue, 第三个参数 currentSpaceData
-         * 都被包装成了 draft 所以也可以通过简单的对象修改再 return 出来即可
-         */
-        const next = pushFilter(cv, draftV, draftify(_.get(store, space)));
 
-        put((ctxDraft) => {
-          const n = isDraft(next) ? finishDraft(next) : next;
-          _.set(ctxDraft, path, n);
-        });
-      };
-    }
-
-    const childrenProps = {
+    const childProps = {
       ...children.props,
-      [pullPath]: draftV,
+      [gotPath]: draftV,
     };
 
-    if (push || vm) {
-      childrenProps[pushEventName] = onChange;
+    if (put !== false) {
+      const op = childProps[putEventName];
+      childProps[putEventName] = (nv, ...args) => {
+        op(nv, ...args);
+        const v = putChanger(nv, draftV, store);
+        spacePut(spaceDraft => _.set(spaceDraft, path, v));
+      };
     }
 
     // Render Props support
     if (isType(children, 'Function')) {
-      return children(childrenProps);
+      return children(childProps);
     }
 
     if (isType(render, 'Function')) {
-      return render(childrenProps);
+      return render(childProps);
     }
 
-    console.log(children);
-    return React.cloneElement(children, childrenProps);
+    // clone support
+    return React.cloneElement(children, childProps);
   }
 
   render() {
@@ -408,139 +328,8 @@ class Atom extends PureComponent {
   }
 }
 
-/**
- * Atomic
- * ------------------------------------------------------------
- * (Comp) => AtomBox
- * - AtomBox
- *   - v: string | array
- *   - vm: string | array
- *   - pull: true | string | function | [string, function]
- *   - push: true | string | function | [string, function]
- * ------------------------------------------------------------
- */
-
-const Atomic = (Comp) => {
-  class AtomBox extends PureComponent {
-    static displayName = `AtomBoxed${Comp.displayName || Comp.name || ''}`;
-
-    static propTypes = {
-      forwardRef: PropTypes.oneOfType([
-        PropTypes.func,
-        // Element is just window.Element, this type for React.createRef()
-        PropTypes.shape({ current: PropTypes.instanceOf(Element) }),
-      ]),
-      v: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
-      vm: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
-      pull: PropTypes.oneOfType([
-        PropTypes.string,
-        PropTypes.func,
-        PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
-      ]),
-      push: PropTypes.oneOfType([
-        PropTypes.string,
-        PropTypes.func,
-        PropTypes.arrayOf([PropTypes.string, PropTypes.func]),
-      ]),
-    };
-
-    static defaultProps = {
-      forwardRef: null,
-      v: null,
-      vm: null,
-      pull: null,
-      push: null,
-    }
-
-    renderAtom = (ctx) => {
-      const {
-        v, vm, pull, push,
-      } = this.props;
-      const { space, store, put } = ctx;
-      if (!v && v !== 0 && !vm && vm !== 0) throw new Error('[Atom] must have a [v] prop.');
-      if (v && vm) throw new Error('[Atom] [v] and [vm] 属性 不能共存.');
-      const bind = v || vm;
-      /**
-     * ------------------------------------------------------------
-     * 将 path 解析成数组, 添加 v="/" 语法糖
-     * ------------------------------------------------------------
-     */
-      const path = bind === '/' ? [space] : [space, ..._castPath(bind)];
-
-      const [pullPath, pullSelector] = handlePull(pull, vm);
-      const [pushEventName, pushFilter] = handlePush(push, vm);
-
-      // 获取对应对应的值
-      const value = pullSelector(_.get(store, path), _.get(store, space));
-      // 草稿化
-      const draftV = draftify(value);
-
-      let onChange;
-
-      if (push) {
-        onChange = (cv) => {
-          if (typeof this.props[pushEventName] === 'function') {
-            this.props[pushEventName](cv);
-          }
-          /**
-           * pushFilter: (nextValueOrEvent | oldDraftValue | currentSpaceDraft) => next;
-           * 受限于 [SyntheticEvent](https://reactjs.org/docs/events.html) 限制,
-           *  SyntheticEvent 不能够异步调用
-           * 因此不同于 put, 必须要返回一个值, 不过, 第二个参数 olgValue, 第三个参数 currentSpaceData
-           * 都被包装成了 draft 所以也可以通过简单的对象修改再 return 出来即可
-           */
-          const next = pushFilter(cv, draftV, draftify(_.get(store, space)));
-
-          put((ctxDraft) => {
-            if (next) {
-              const n = isDraft(next) ? finishDraft(next) : next;
-              _.set(ctxDraft, path, n);
-            }
-          });
-        };
-      }
-
-      const childrenProps = {
-        ...this.props,
-        [pullPath]: draftV,
-      };
-
-      if (push) {
-        childrenProps[pushEventName] = onChange;
-      }
-
-      return <Comp {...childrenProps} />;
-    }
-
-    render() {
-      return (
-        <SpaceCtx.Consumer>
-          {this.renderAtom}
-        </SpaceCtx.Consumer>
-      );
-    }
-  }
-
-  hoistNonReactStatics(AtomBox, Comp);
-  return forwardRef((props, ref) => <AtomBox {...props} forwardRef={ref} />);
-};
-
-const log = (o, msg) => {
-  if (isDraft(o)) {
-    console.log(msg);
-    console.dir(original(o));
-  } else {
-    console.log(msg);
-    console.dir(o);
-  }
-};
-
-
 export {
   SpaceProvider,
-  Space,
   Atom,
-  Atomic,
   discover,
-  log,
 };
