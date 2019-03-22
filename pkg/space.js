@@ -6,6 +6,7 @@
  * - SpaceProvider
  *   - chidren: element
  * ------------------------------------------------------------
+ * #private
  *
  * - Space
  *   - space: Symbol
@@ -41,6 +42,7 @@ import React, {
   // forwardRef,
   createContext,
   PureComponent,
+  useEffect,
   // useState,
 } from 'react';
 import PropTypes from 'prop-types';
@@ -52,11 +54,12 @@ import {
   setAutoFreeze,
   isDraft,
   isDraftable,
-  original,
+  // original,
   createDraft,
-  finishDraft,
+  // finishDraft,
   // finishDraft,
 } from 'immer';
+import shallowequal from 'shallowequal';
 
 setAutoFreeze(true);
 
@@ -107,6 +110,9 @@ const SpaceProvider = (props) => {
     store,
     put,
   };
+  useEffect(() => {
+    // console.log('use effect', store);
+  });
 
   const { children } = props;
   return (
@@ -134,44 +140,64 @@ SpaceProvider.defaultProps = {
  * ------------------------------------------------------------
  */
 
-
 const notify = (old, next, notice) => {
-  if (next !== undefined && !_.isEqual(old, next)) {
+  if (notice !== undefined
+    && old !== undefined
+    && next !== undefined
+    && !shallowequal(old, next)
+  ) {
     notice(next);
+    return true;
   }
+  return false;
 };
+
 class Space extends PureComponent {
-  spaceKiller = null;
+  _killer = null;
+
+  init = undefined;
+
+  reseter = null;
+
+  lastStore = undefined;
 
   componentWillUnmount() {
-    this.spaceKiller();
+    this._killer();
   }
 
   renderSpace = (ctx) => {
     const {
-      space, children, value, onChange,
+      space, children, init, onChange,
     } = this.props;
     const { store, put } = ctx;
     const spaceStore = _.get(store, space);
 
-    if (!this.spaceKiller) {
-      this.spaceKiller = put((draftStore) => {
-        _.set(draftStore, space, undefined);
+    notify(this.lastStore, spaceStore, onChange);
+    this.lastStore = spaceStore;
+
+    if (!spaceStore && init) {
+      put((draftStore) => {
+        _.set(draftStore, space, init);
       });
     }
 
-    notify(value, spaceStore, onChange);
+    if (!this.init) {
+      this.init = _.cloneDeep(init);
+      this.reseter = () => put((draftStore) => {
+        _.set(draftStore, space, _.cloneDeep(this.init));
+      });
+    }
 
-    if (spaceStore === undefined) {
-      put((draftStore) => {
-        _.set(draftStore, space, value);
+    if (!this._killer) {
+      this._killer = () => put((draftStore) => {
+        _.set(draftStore, space, undefined);
       });
     }
 
 
     const spacePut = (differ) => {
       put((draftStore) => {
-        differ(draftStore[space]);
+        differ(draftStore[space], this.reseter);
       });
     };
 
@@ -203,26 +229,30 @@ class Space extends PureComponent {
 /**
  * dicover
  * ------------------------------------------------------------
- * (space) => { data, put, Space }
+ * (space) => [ data, put, Space ]
  * ------------------------------------------------------------
  * The Salute To Discovery
  */
 
 let spaceId = 0;
-const discover = () => {
+const discover = (name) => {
   const id = `space_${spaceId++}`; // eslint-disable-line
 
   const NASA = props => <Space {...props} space={id} />;
+  NASA.displayName = `${name || 'Unknown'}Space`;
   const got = () => _wormhole.getGot(id);
-  const put = differ => _wormhole.getPut(id)(differ);
-  got.next = cb => new Promise((resolve) => {
-    setTimeout(() => {
-      const get = got();
-      if (isType(cb, 'Function')) {
-        cb(get);
-      }
-      resolve(get);
+  const put = (differ, waiting = 0) => {
+    _wormhole.getPut(id)(differ);
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(got());
+      }, waiting);
     });
+  };
+  got.next = (waiting = 0) => new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(got());
+    }, waiting);
   });
 
   return [got, put, NASA];
@@ -298,10 +328,18 @@ class Atom extends PureComponent {
     };
 
     if (put !== false) {
-      const op = childProps[putEventName];
-      childProps[putEventName] = (nv, ...args) => {
-        op(nv, ...args);
-        const v = putChanger(nv, draftV, store);
+      const originPutEvent = childProps[putEventName];
+      childProps[putEventName] = (...args) => {
+        let nextv = args[0];
+        // 原来有方法, 就套一层
+        if (isType(originPutEvent, 'Function')) {
+          const eventResult = originPutEvent(...args);
+          // 是否需要接受原来onChange的值, 待定, 可能需要加开关了
+          if (!eventResult === undefined) {
+            nextv = eventResult;
+          }
+        }
+        const v = putChanger(nextv, draftV, store);
         spacePut(spaceDraft => _.set(spaceDraft, path, v));
       };
     }
