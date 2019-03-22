@@ -10,7 +10,7 @@
  *
  * - Space
  *   - space: Symbol
- *   - value: Object | Array
+ *   - init: Object | Array
  *   - onChange: Function
  * ------------------------------------------------------------
  *
@@ -21,8 +21,8 @@
  * - Atom
  *   - v: string | array
  *   - vm: string | array
- *   - got: true | string | function | [string, function]
- *   - put: true | string | function | [string, function]
+ *   - got: bool | string | function | [string, function]
+ *   - put: bool | string | function | [string, function]
  *   - children: element | function
  *   - render: function
  * ------------------------------------------------------------
@@ -32,8 +32,8 @@
  *   - AtomBox
  *     - v: string | array
  *     - vm: string | array
- *     - got: true | string | function | [string, function]
- *     - put: true | string | function | [string, function]*
+ *     - got: bool | string | function | [string, function]
+ *     - put: bool | string | function | [string, function]
  *
  * ------------------------------------------------------------
  */
@@ -329,17 +329,20 @@ class Atom extends PureComponent {
 
     if (put !== false) {
       const originPutEvent = childProps[putEventName];
+      // 原来组件的onChange怎么处理呢怎么处理呢怎么处理呢怎么处理呢, 表单写一写再来决定吧
       childProps[putEventName] = (...args) => {
         let nextv = args[0];
         // 原来有方法, 就套一层
         if (isType(originPutEvent, 'Function')) {
           const eventResult = originPutEvent(...args);
           // 是否需要接受原来onChange的值, 待定, 可能需要加开关了
-          if (!eventResult === undefined) {
+          if (eventResult !== undefined) {
             nextv = eventResult;
           }
         }
-        const v = putChanger(nextv, draftV, store);
+        const nextArgs = args.concat([draftV, store]);
+        nextArgs.slice(1, nextv);
+        const v = putChanger(nextArgs);
         spacePut(spaceDraft => _.set(spaceDraft, path, v));
       };
     }

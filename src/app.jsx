@@ -56,7 +56,7 @@ class App extends Component {
 
   onChange = (list) => {
     console.log('onChange', list);
-    this.setState({ list });
+    this.setState({ list: [456, 789, 1000] });
   }
 
   render() {
